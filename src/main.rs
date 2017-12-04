@@ -2,6 +2,8 @@
 use std::vec::Vec;
 use std::collections::HashMap;
 use std::fmt;
+
+#[derive(Clone)]
 pub enum Node {
     Integer(i32),
     Bool(bool),
@@ -13,7 +15,7 @@ pub enum Node {
     Block(Vec<Node>),
     If { cond: Box<Node>, body: Box<Node> },
     For { start: Box<Node>, cond: Box<Node>, step: Box<Node>, body: Box<Node> },
-    Class { name: String, methods: Vec<Node> },
+    Class { name: String, methods: HashMap<String,Node> },
     NewObj { class_name: String, fields: Option<HashMap<String, Box<Node>>> },
     SetObjField { var: Box<Node>, field: String, value: Box<Node> },
     GetObjField { var: Box<Node>, field: String },
@@ -80,6 +82,9 @@ impl Node {
                 var.eval(frame);
                 frame.get_field(field.clone());
             }
+            &Node::Class{ref name, ref methods} => {
+                frame.register_class(name.clone(), methods.to_owned());
+            }
             _ => panic!("Not yet implemented"),
         }
     }
@@ -121,16 +126,15 @@ impl fmt::Display for NativeType {
     }
 }
 
+#[derive(Clone)]
 struct Class {
     methods: HashMap<String, Node>,
-    name:    String,
 }
 
 impl Class {
-    pub fn new() -> Class {
+    pub fn new(methods: HashMap<String, Node>) -> Class {
         Class {
-            name: String::from("Test"),
-            methods: HashMap::new()
+            methods: methods
         }
     }
 }
@@ -174,6 +178,7 @@ impl VM {
             classes: HashMap::new()
         }
     }
+
 
 }
 
@@ -272,6 +277,11 @@ impl<'a> Frame<'a> {
         }
 
     }
+
+    pub fn register_class(&mut self, name: String, methods: HashMap<String,Node>) {
+        self.vm.classes.insert(name, Class::new(methods));
+    }
+
 
 }
 
