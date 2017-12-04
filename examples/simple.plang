@@ -1,0 +1,5 @@
+class Foo() {
+    def main() {
+        5 + 5
+    }
+}
