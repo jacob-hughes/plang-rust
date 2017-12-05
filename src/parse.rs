@@ -7,6 +7,7 @@ extern crate cfgrammar;
 use std::path::Path;
 use std::fs::File;
 use std::io::Read;
+use std::convert::TryFrom;
 
 use self::lrpar::parser;
 use self::lrpar::parser::Node;
@@ -49,11 +50,11 @@ pub fn parse_file(source_path: &Path, lex_path: &Path, yacc_path: &Path) -> Resu
         .map_err(|_| ParseError::BrokenParser)?;
 
     // Sync up the IDs of terminals in the lexer and parser.
-    // let rule_ids = grm.terms_map()
-    //     .iter()
-    //     .map(|(&n, &i)| (n, u16::try_from(usize::from(i)).unwrap()))
-    //     .collect();
-    // lexer_def.set_rule_ids(&rule_ids);
+    let rule_ids = grm.terms_map()
+         .iter()
+         .map(|(&n, &i)| (n, u16::try_from(usize::from(i)).unwrap()))
+         .collect();
+    lexer_def.set_rule_ids(&rule_ids);
 
     let lexer = lexer_def.lexer(&input);
     let lexemes = lexer.lexemes().map_err(|_| ParseError::LexicalError)?;

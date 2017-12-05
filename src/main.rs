@@ -299,11 +299,8 @@ fn main() {
     let source_path = Path::new("/home/jake/projects/plang_interp/examples/simple.plang");
 
     let pt = parse::parse_file(source_path, lex_path, yacc_path);
+    println!("{:?}", pt);
 
-    match pt {
-        Ok(res) => println!("{:?}", res),
-        Err(error) => println!("{:?}", error),
-    }
 
 
     // let exp = Node::Addition(Box::new(Node::Integer(7)), Box::new(Node::Integer(2)));
