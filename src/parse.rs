@@ -8,6 +8,7 @@ use std::fs::File;
 use std::io::Read;
 use std::convert::{TryFrom, TryInto};
 use std::collections::HashMap;
+use std::fmt;
 
 use self::lrpar::parser;
 use self::lrpar::parser::Node;
@@ -90,9 +91,31 @@ enum Instr {
     JEQ(i32),
     RET,
 }
+
+struct Bytecode<'pt> {
+    classes: HashMap<String, Vec<Instr>>,
+    symbols: HashMap<String, (Vec<String>, Vec<String>)>,
+
+    // Store the grammar and input for convenience
+    grm:    &'pt YaccGrammar,
+    input:  &'pt str,
+}
+
+impl<'pt> fmt::Debug for Bytecode<'pt> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Ctx{{classes: {:?}, symbols: {:?}}}", self.classes, self.symbols)
+    }
+}
+
+impl<'pt> Bytecode<'pt> {
+    fn register_function(class_name: String, function_name: String) {
+    }
+}
+
 #[derive(Debug)]
 struct Class {
     methods: HashMap<String, Method>,
+    code:    Vec<Instr>
 }
 
 impl Class {
