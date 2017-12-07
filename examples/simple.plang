@@ -1,0 +1,7 @@
+class Bar() {
+    def x(hello, bye) {
+        let hello = 5;
+        hello
+    }
+
+}
