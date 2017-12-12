@@ -1,7 +1,11 @@
+#![feature(try_from)]
 #![allow(dead_code)]
 use std::vec::Vec;
 use std::collections::HashMap;
 use std::fmt;
+use std::path::Path;
+
+#[derive(Clone)]
 pub enum Node {
     Integer(i32),
     Bool(bool),
@@ -275,30 +279,16 @@ impl<'a> Frame<'a> {
 
 }
 
+mod parse;
+use std::env;
 
 fn main() {
-    let exp = Node::Addition(Box::new(Node::Integer(7)), Box::new(Node::Integer(2)));
-    let if_exp = Node::If{cond:Box::new(Node::Bool(false)), body: Box::new(Node::Integer(3))};
-
-    // Test block with assignment
-    let mut stmts = Vec::new();
-
-    let new_obj = Node::NewObj{class_name: String::from("Obj"), fields: None};
-    let setter = Node::SetObjField{
-        var: Box::new(Node::Var(String::from("x"))),
-        field: String::from("hello"),
-        value: Box::new(Node::Integer(10))
-    };
-    let getter = Node::GetObjField{
-        var: Box::new(Node::Var(String::from("x"))),
-        field: String::from("hello"),
-    };
-    stmts.push(Node::Let(String::from("x"), Box::new(new_obj)));
-    stmts.push(setter);
-    stmts.push(getter);
-    let block = Node::Block(stmts);
-    let mut vm = VM::new();
-    let res = vm.interp(&block);
-    println!("{}", res)
+    let args: Vec<String> = env::args().collect();
+    let ref source = &args[1];
+    let lex_path    = Path::new("grammar/lexer.l");
+    let yacc_path   = Path::new("grammar/grammar.y");
+    let source_path = Path::new(source);
+    let res = parse::parse_file(source_path, lex_path, yacc_path);
+    println!("{:?}", res);
 }
 
