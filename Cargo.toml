@@ -4,3 +4,7 @@ version = "0.1.0"
 authors = ["Jake <jacob.hughes@kcl.ac.uk>"]
 
 [dependencies]
+lrlex = { git = "http://github.com/softdevteam/lrlex" }
+lrpar = { git = "http://github.com/softdevteam/lrpar" }
+lrtable = { git = "http://github.com/softdevteam/lrtable" }
+cfgrammar = { git = "http://github.com/softdevteam/cfgrammar" }
