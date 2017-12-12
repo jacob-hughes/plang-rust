@@ -32,7 +32,7 @@ if_statement : "IF" expression block;
 
 let_statement : "LET" "IDENTIFIER" "EQ" expression;
 
-for_statement : "FOR" "LPAREN" expression "SEMICOLON" expression "SEMICOLON" expression block;
+for_statement : "FOR" "LPAREN" statement "SEMI" expression "SEMI" statement "RPAREN" block;
 
 func_def    : "DEF" "IDENTIFIER" "LPAREN" parameter_list_opt "RPAREN" block ;
 
@@ -43,7 +43,6 @@ parameter_list_opt :
 parameter_list : "IDENTIFIER"
                | parameter_list "COMMA" "IDENTIFIER"
                ;
-
 
 expression : variable
            | binary_expression
@@ -63,13 +62,22 @@ bin_op : "PLUS"
        | "GTEQ"
        | "LT"
        | "GT"
+       | "EQEQ"
        ;
 
-method_invocation : "IDENTIFIER" "DOT" "IDENTIFIER" "LPAREN" parameter_list_opt "RPAREN";
+method_invocation : "IDENTIFIER" "DOT" "IDENTIFIER" "LPAREN" arg_list_opt "RPAREN";
 
-field_access : "THIS" "DOT" "IDENTIFIER"
-             | "IDENTIFIER" "DOT" "IDENTIFIER"
+arg_list_opt :
+             | arg_list
              ;
+
+arg_list : expression
+         | arg_list "COMMA" expression
+         ;
+
+field_access : "IDENTIFIER" "DOT" "IDENTIFIER";
+
+field_set : "IDENTIFIER" "DOT" "IDENTIFIER" "EQ" expression;
 
 class_instance_creation : "NEW" "IDENTIFIER" "LPAREN" parameter_list_opt "RPAREN";
 

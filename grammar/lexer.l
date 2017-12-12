@@ -31,7 +31,7 @@ this    THIS
 
 [0-9]+                  INT_LITERAL
 (true|false)            BOOL_LITERAL
-"(?:\\"|[^"\n])*"       STRING_LITERAL
+"(?:\\"|[^"\n])*"       STR_LITERAL
 [ \t\n\r]+              ;
 (//.*?$|/[*].*?[*]/)    ;
 [a-zA-Z_][a-zA-Z0-9_]*  IDENTIFIER
