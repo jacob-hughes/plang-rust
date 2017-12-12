@@ -1,0 +1,5 @@
+class Bar() {
+    def x(hello, bye) {
+        10 + 3
+    }
+}
