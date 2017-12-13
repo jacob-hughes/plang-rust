@@ -27,7 +27,6 @@ impl Object {
             fields: HashMap::new()
         }
     }
-
 }
 
 pub struct VM {
@@ -48,12 +47,13 @@ impl VM {
     }
 
     pub fn run(&mut self) {
+        self.enter_main();
         loop {
             if self.pc >= self.bytecode.bytecode.len() {
                 break
             }
-            let instr = self.bytecode.bytecode[self.pc].clone();
-            match instr {
+            let instr = &self.bytecode.bytecode[self.pc];
+            match *instr {
                 Instr::PUSH_INT(ref x) => {
                     let frame = self.frames.last_mut().unwrap();
                     frame.push(NativeType::Int(x.clone()));
@@ -78,12 +78,12 @@ impl VM {
                 Instr::EQEQ => panic!("NotYetImplemented"),
                 Instr::SWAP => panic!("NotYetImplemented"),
                 Instr::DUP => panic!("NotYetImplemented"),
-                Instr::LOAD_VAR(ref index) => {
+                Instr::LOAD_VAR(index) => {
                     let frame = self.frames.last_mut().unwrap();
                     frame.load_local(index);
                     self.pc += 1
                 }
-                Instr::STORE_VAR(ref name) => {
+                Instr::STORE_VAR(name) => {
                     let frame = self.frames.last_mut().unwrap();
                     frame.store_local(name);
                     self.pc += 1
@@ -93,16 +93,44 @@ impl VM {
                 Instr::NEW_OBJECT(ref class_name) => panic!("NotYetImplemented"),
                 Instr::LOAD_FIELD(ref field_name) => panic!("NotYetImplemented"),
                 Instr::STORE_FIELD(ref field_name) => panic!("NotYetImplemented"),
-                Instr::CALL(ref class_name, ref fn_name) => panic!("NotYetImplemented"),
+                Instr::CALL(ref class_name, ref fn_name) => {
+                    let ref key = (class_name.to_string(), fn_name.to_string());
+                    let fn_metadata = self.bytecode.symbols.get(&key.clone())
+                        .expect("Function not found");
+                    let mut new_frame = Frame::new(self.pc + 1);
+                    {
+                        let frame = self.frames.last_mut().unwrap();
+                        for i in 0..fn_metadata.params_len() {
+                            new_frame.push(frame.pop())
+                        }
+                    }
+                    self.frames.push(new_frame);
+                    self.pc = self.bytecode.labels.get(key).unwrap().clone();
+                },
                 Instr::JUMP_IF_TRUE(ref pos) => panic!("NotYetImplemented"),
                 Instr::JUMP_IF_FALSE(ref pos) => panic!("NotYetImplemented"),
                 Instr::JUMP(ref pos) => panic!("NotYetImplemented"),
-                Instr::RET =>  panic!("NotYetImplemented"),
+                Instr::RET => {
+                    let (return_value, return_address) =  {
+                        let frame = self.frames.last_mut().unwrap();
+                        (frame.pop(), frame.return_address)
+                    };
+                    self.frames.pop();
+                    let frame = self.frames.last_mut().unwrap();
+                    frame.push(return_value);
+                    self.pc = return_address;
+                },
                 _ => (),
             };
         }
     }
 
+    fn enter_main(&mut self) {
+        self.pc = self.bytecode.labels.get(
+            &(GLOBAL_NSPACE.to_string(), MAIN_FN.to_string()))
+            .expect("Main method not found").clone();
+        self.frames.push(Frame::new(self.bytecode.bytecode.len()))
+    }
 }
 
 struct Frame {
@@ -131,13 +159,13 @@ impl Frame {
         }
     }
 
-    fn load_local(&mut self, index: &usize) {
-        let value = self.locals[index.clone()].clone();
-        self.push(value.clone())
+    fn load_local(&mut self, index: usize) {
+        let value = self.locals[index].clone();
+        self.push(value)
     }
 
-    fn store_local(&mut self, index: &usize) {
+    fn store_local(&mut self, index: usize) {
         let value = self.pop();
-        self.locals[index.clone()] = value;
+        self.locals[index] = value;
     }
 }

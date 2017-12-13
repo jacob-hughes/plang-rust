@@ -114,7 +114,7 @@ impl Fn {
         }
     }
 
-    pub fn param_len(&self) -> usize {
+    pub fn params_len(&self) -> usize {
         self.num_params
     }
 
@@ -443,6 +443,7 @@ fn gen_bytecode(parse_tree: &Node<u16>, grm: &YaccGrammar, input: &str) -> Bytec
             ctx.register_function(&nodes[1]);
             gen_params(&nodes[3], ctx);
             gen_block(&nodes[5], ctx);
+            ctx.gen_bc(Instr::RET);
         }
     }
 
@@ -475,4 +476,3 @@ fn gen_bytecode(parse_tree: &Node<u16>, grm: &YaccGrammar, input: &str) -> Bytec
     }
     Bytecode::new(ctx)
 }
-
