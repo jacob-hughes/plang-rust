@@ -72,8 +72,8 @@ pub fn parse_file(source_path: &Path, lex_path: &Path, yacc_path: &Path) -> Resu
     Ok(gen_bytecode(&pt, &grm, &input))
 }
 
-#[derive(Debug)]
-enum Instr {
+#[derive(Debug, Clone)]
+pub enum Instr {
     PUSH_INT(i32),
     PUSH_STR(String),
     POP,
@@ -84,8 +84,8 @@ enum Instr {
     LT,
     GT,
     EQEQ,
-    LOAD_VAR(String),
-    STORE_VAR(String),
+    LOAD_VAR(usize),
+    STORE_VAR(usize),
     LOAD_GLOBAL(String),
     STORE_GLOBAL(String),
     NEW_OBJECT(String),
@@ -101,36 +101,25 @@ enum Instr {
 }
 
 #[derive(Debug)]
-struct Fn {
-    params: Vec<String>,
+pub struct Fn {
     locals: Vec<String>,
+    num_params: usize,
 }
 
 impl Fn {
     fn new() -> Fn {
         Fn {
-            params: Vec::new(),
+            num_params: 0,
             locals: Vec::new(),
         }
     }
-    fn param_size(&self) -> usize {
-        self.params.len()
+
+    pub fn param_len(&self) -> usize {
+        self.num_params
     }
 
-    fn push_param(&mut self, param: String) {
-        self.params.push(param);
-    }
-
-    fn push_local(&mut self, local: String) {
-        self.locals.push(local);
-    }
-
-    fn locals_size(&self) -> usize {
+    pub fn locals_len(&self) -> usize {
         self.locals.len()
-    }
-
-    fn size(&self) -> usize {
-        self.locals.len() + self.params.len()
     }
 }
 
@@ -140,9 +129,9 @@ impl Fn {
 // lifetime, their removal makes working with the struct easier.
 #[derive(Debug)]
 pub struct Bytecode {
-    bytecode: Vec<Instr>,
-    symbols: HashMap<(String, String), Fn>,
-    labels: HashMap<(String, String), usize>,
+    pub bytecode: Vec<Instr>,
+    pub symbols: HashMap<(String, String), Fn>,
+    pub labels: HashMap<(String, String), usize>,
 }
 
 impl Bytecode {
@@ -219,10 +208,28 @@ impl<'pt> CompilerContext<'pt> {
     }
 
     // Adds the parameter name to the param vector of the current cls + func.
-    fn register_parameter(&mut self, param: &Node<u16>) {
+    fn register_parameter(&mut self, param: &Node<u16>) -> usize {
         let param_name = self.get_value(param);
         let ref key = (self.cur_cls.to_string(), self.cur_fn.to_string());
-        self.symbols.get_mut(key).unwrap().push_param(param_name);
+        let ref mut fn_meta = self.symbols.get_mut(key).unwrap();
+        fn_meta.num_params += 1;
+        fn_meta.locals.push(param_name);
+        fn_meta.locals.len() - 1
+    }
+
+    fn get_var_offset(&self, var: &Node<u16>) -> usize {
+        let ref var_name = self.get_value(var);
+        let ref key = (self.cur_cls.to_string(), self.cur_fn.to_string());
+        let ref locals = self.symbols.get(key).unwrap().locals;
+        locals.iter().position(|x| x == var_name).unwrap()
+    }
+
+    fn register_local(&mut self, var: &Node<u16>) -> usize {
+        let var_name = self.get_value(var);
+        let ref key = (self.cur_cls.to_string(), self.cur_fn.to_string());
+        let ref mut locals = self.symbols.get_mut(key).unwrap().locals;
+        locals.push(var_name);
+        locals.len() - 1
     }
 
     fn gen_bc(&mut self , instr: Instr) -> usize {
@@ -312,8 +319,8 @@ fn gen_bytecode(parse_tree: &Node<u16>, grm: &YaccGrammar, input: &str) -> Bytec
             if let &Node::Nonterm{ nonterm_idx, ref nodes } = exp_type {
                 match name.as_ref() {
                     "variable" => {
-                        let var_name = ctx.get_value(&nodes[0]);
-                        ctx.gen_bc(Instr::LOAD_VAR(var_name));
+                        let var_offset = ctx.get_var_offset(&nodes[0]);
+                        ctx.gen_bc(Instr::LOAD_VAR(var_offset));
                     }
                     "binary_expression" => {
                         gen_exp(&nodes[0], ctx);
@@ -401,8 +408,8 @@ fn gen_bytecode(parse_tree: &Node<u16>, grm: &YaccGrammar, input: &str) -> Bytec
     fn gen_let(node: &Node<u16>, ctx: &mut CompilerContext) {
         if let &Node::Nonterm{ nonterm_idx, ref nodes } = node {
             gen_exp(&nodes[3], ctx);
-            let var_name = ctx.get_value(&nodes[1]);
-            ctx.gen_bc(Instr::STORE_VAR(var_name));
+            let var_index = ctx.register_local(&nodes[1]);
+            ctx.gen_bc(Instr::STORE_VAR(var_index));
         }
     }
 
