@@ -233,8 +233,13 @@ impl<'pt> CompilerContext<'pt> {
         let var_name = self.get_value(var);
         let ref key = (self.cur_cls.to_string(), self.cur_fn.to_string());
         let ref mut locals = self.symbols.get_mut(key).unwrap().locals;
-        locals.push(var_name);
-        locals.len() - 1
+        match locals.iter().position(|x| x == &var_name) {
+            Some(x) => x,
+            None => {
+                locals.push(var_name);
+                locals.len() - 1
+            }
+        }
     }
 
     fn gen_bc(&mut self , instr: Instr) -> usize {

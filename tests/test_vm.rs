@@ -186,3 +186,36 @@ fn cmp_gte() {
     assert_eq!(res, "true");
 }
 
+#[test]
+fn let_statement() {
+    let src = "
+        class global() {
+            def main() {
+               let x = 666;
+               x
+            }
+        }
+    ";
+    let bc = build_bytecode(src.to_string());
+    println!("{:?}", bc);
+    let res = run(bc);
+    assert_eq!(res, "666");
+}
+
+#[test]
+fn let_shadow() {
+    let src = "
+        class global() {
+            def main() {
+               let x = 666;
+               let x = 123;
+               x
+            }
+        }
+    ";
+    let bc = build_bytecode(src.to_string());
+    println!("{:?}", bc);
+    let res = run(bc);
+    assert_eq!(res, "123");
+}
+

@@ -215,7 +215,14 @@ impl Frame {
 
     fn store_local(&mut self, index: usize) {
         let value = self.pop();
-        self.locals[index] = value;
+        let len = self.locals.len();
+        if index < len {
+            self.locals[index] = value;
+        }
+        else {
+            assert_eq!(index, len);
+            self.locals.push(value)
+        }
     }
 
     pub fn add(&mut self) {
