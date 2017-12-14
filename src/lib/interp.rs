@@ -79,15 +79,41 @@ impl VM {
                     frame.pop();
                     self.pc +=1
                 }
-                Instr::ADD => panic!("NotYetImplemented"),
-                Instr::SUB => panic!("NotYetImplemented"),
-                Instr::LTEQ => panic!("NotYetImplemented"),
-                Instr::GTEQ => panic!("NotYetImplemented"),
-                Instr::LT => panic!("NotYetImplemented"),
-                Instr::GT => panic!("NotYetImplemented"),
-                Instr::EQEQ => panic!("NotYetImplemented"),
-                Instr::SWAP => panic!("NotYetImplemented"),
-                Instr::DUP => panic!("NotYetImplemented"),
+                Instr::ADD => {
+                    let frame = self.frames.last_mut().unwrap();
+                    frame.add();
+                    self.pc +=1
+                }
+                Instr::SUB => {
+                    let frame = self.frames.last_mut().unwrap();
+                    frame.sub();
+                    self.pc +=1
+                }
+                Instr::LTEQ => {
+                    let frame = self.frames.last_mut().unwrap();
+                    frame.lteq();
+                    self.pc +=1
+                }
+                Instr::GTEQ =>{
+                    let frame = self.frames.last_mut().unwrap();
+                    frame.gteq();
+                    self.pc +=1
+                }
+                Instr::LT =>{
+                    let frame = self.frames.last_mut().unwrap();
+                    frame.lt();
+                    self.pc +=1
+                }
+                Instr::GT =>{
+                    let frame = self.frames.last_mut().unwrap();
+                    frame.gt();
+                    self.pc +=1
+                }
+                Instr::EQEQ =>{
+                    let frame = self.frames.last_mut().unwrap();
+                    frame.eq();
+                    self.pc +=1
+                }
                 Instr::LOAD_VAR(index) => {
                     let frame = self.frames.last_mut().unwrap();
                     frame.load_local(index);
@@ -138,7 +164,7 @@ impl VM {
                     };
                     break
                 }
-                _ => (),
+                _ => panic!("InstrNotImplemented"),
             };
         }
         result
@@ -190,6 +216,90 @@ impl Frame {
     fn store_local(&mut self, index: usize) {
         let value = self.pop();
         self.locals[index] = value;
+    }
+
+    pub fn add(&mut self) {
+        let rhs = self.pop();
+        let lhs = self.pop();
+        match (lhs, rhs) {
+            (NativeType::Int(x), NativeType::Int(y))        => self.push(NativeType::Int(x+y)),
+            (NativeType::Int(x), NativeType::Double(y))     => self.push(NativeType::Double(x as f32 + y)),
+            (NativeType::Double(x), NativeType::Int(y))     => self.push(NativeType::Double(x + y as f32)),
+            (NativeType::Double(x), NativeType::Double(y))  => self.push(NativeType::Double(x+y)),
+            _ => panic!("TypeError"),
+        }
+    }
+
+    pub fn sub(&mut self) {
+        let rhs = self.pop();
+        let lhs = self.pop();
+        match (lhs, rhs) {
+            (NativeType::Int(x), NativeType::Int(y))        => self.push(NativeType::Int(x-y)),
+            (NativeType::Int(x), NativeType::Double(y))     => self.push(NativeType::Double(x as f32 - y)),
+            (NativeType::Double(x), NativeType::Int(y))     => self.push(NativeType::Double(x - y as f32)),
+            (NativeType::Double(x), NativeType::Double(y))  => self.push(NativeType::Double(x-y)),
+            _ => panic!("TypeError"),
+        }
+    }
+
+    pub fn lteq(&mut self) {
+        let rhs = self.pop();
+        let lhs = self.pop();
+        match (lhs, rhs) {
+            (NativeType::Int(x), NativeType::Int(y))        => self.push(NativeType::Bool(x<=y)),
+            (NativeType::Int(x), NativeType::Double(y))     => self.push(NativeType::Bool(x as f32 <= y)),
+            (NativeType::Double(x), NativeType::Int(y))     => self.push(NativeType::Bool(x <= y as f32)),
+            (NativeType::Double(x), NativeType::Double(y))  => self.push(NativeType::Bool(x<=y)),
+            _ => panic!("TypeError"),
+        }
+    }
+
+    pub fn lt(&mut self) {
+        let rhs = self.pop();
+        let lhs = self.pop();
+        match (lhs, rhs) {
+            (NativeType::Int(x), NativeType::Int(y))        => self.push(NativeType::Bool(x<y)),
+            (NativeType::Int(x), NativeType::Double(y))     => self.push(NativeType::Bool((x as f32) < y)),
+            (NativeType::Double(x), NativeType::Int(y))     => self.push(NativeType::Bool(x < (y as f32))),
+            (NativeType::Double(x), NativeType::Double(y))  => self.push(NativeType::Bool(x<y)),
+            _ => panic!("TypeError"),
+        }
+    }
+
+    pub fn gt(&mut self) {
+        let rhs = self.pop();
+        let lhs = self.pop();
+        match (lhs, rhs) {
+            (NativeType::Int(x), NativeType::Int(y))        => self.push(NativeType::Bool(x>y)),
+            (NativeType::Int(x), NativeType::Double(y))     => self.push(NativeType::Bool((x as f32) > y)),
+            (NativeType::Double(x), NativeType::Int(y))     => self.push(NativeType::Bool(x > (y as f32))),
+            (NativeType::Double(x), NativeType::Double(y))  => self.push(NativeType::Bool(x>y)),
+            _ => panic!("TypeError"),
+        }
+    }
+
+    pub fn gteq(&mut self) {
+        let rhs = self.pop();
+        let lhs = self.pop();
+        match (lhs, rhs) {
+            (NativeType::Int(x), NativeType::Int(y))        => self.push(NativeType::Bool(x>=y)),
+            (NativeType::Int(x), NativeType::Double(y))     => self.push(NativeType::Bool(x as f32 >= y)),
+            (NativeType::Double(x), NativeType::Int(y))     => self.push(NativeType::Bool(x >= y as f32)),
+            (NativeType::Double(x), NativeType::Double(y))  => self.push(NativeType::Bool(x>=y)),
+            _ => panic!("TypeError"),
+        }
+    }
+
+    pub fn eq(&mut self) {
+        let rhs = self.pop();
+        let lhs = self.pop();
+        match (lhs, rhs) {
+            (NativeType::Int(x), NativeType::Int(y))        => self.push(NativeType::Bool(x==y)),
+            (NativeType::Int(x), NativeType::Double(y))     => self.push(NativeType::Bool(x as f32 == y)),
+            (NativeType::Double(x), NativeType::Int(y))     => self.push(NativeType::Bool(x == (y as f32))),
+            (NativeType::Double(x), NativeType::Double(y))  => self.push(NativeType::Bool(x==y)),
+            _ => panic!("TypeError"),
+        }
     }
 }
 
