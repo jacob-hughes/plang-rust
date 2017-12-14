@@ -129,6 +129,25 @@ impl VM {
                 Instr::NEW_OBJECT(ref class_name) => panic!("NotYetImplemented"),
                 Instr::LOAD_FIELD(ref field_name) => panic!("NotYetImplemented"),
                 Instr::STORE_FIELD(ref field_name) => panic!("NotYetImplemented"),
+                Instr::JUMP_IF_TRUE(pos) => {
+                    let frame = self.frames.last_mut().unwrap();
+                    if let NativeType::Bool(true) = frame.pop() {
+                        self.pc = pos
+                    }
+                    else {
+                        self.pc += 1
+                    }
+                },
+                Instr::JUMP_IF_FALSE(pos) => {
+                    let frame = self.frames.last_mut().unwrap();
+                    if let NativeType::Bool(false) = frame.pop() {
+                        self.pc = pos
+                    }
+                    else {
+                        self.pc += 1
+                    }
+                },
+                Instr::JUMP(pos) => self.pc = pos,
                 Instr::CALL(ref class_name, ref fn_name) => {
                     let ref key = (class_name.to_string(), fn_name.to_string());
                     let fn_metadata = self.bytecode.symbols.get(&key.clone())
@@ -143,9 +162,6 @@ impl VM {
                     self.frames.push(new_frame);
                     self.pc = self.bytecode.labels.get(key).unwrap().clone();
                 },
-                Instr::JUMP_IF_TRUE(ref pos) => panic!("NotYetImplemented"),
-                Instr::JUMP_IF_FALSE(ref pos) => panic!("NotYetImplemented"),
-                Instr::JUMP(ref pos) => panic!("NotYetImplemented"),
                 Instr::RET => {
                     let (return_value, return_address) =  {
                         let frame = self.frames.last_mut().unwrap();
