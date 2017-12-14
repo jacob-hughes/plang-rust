@@ -47,6 +47,10 @@ pub fn read_file(path: &Path) -> Result<String, ParseError> {
 
 pub fn parse_file(source_path: &Path, lex_path: &Path, yacc_path: &Path) -> Result<Bytecode,ParseError> {
     let input = read_file(source_path)?;
+    parse_input(input, lex_path, yacc_path)
+}
+
+pub fn parse_input(source: String, lex_path: &Path, yacc_path: &Path) -> Result<Bytecode, ParseError> {
     let lexs = read_file(lex_path)?;
     let mut lexer_def = build_lex::<u16>(&lexs)
         .map_err(|_| ParseError::BrokenLexer)?;
@@ -61,7 +65,7 @@ pub fn parse_file(source_path: &Path, lex_path: &Path, yacc_path: &Path) -> Resu
          .collect();
     lexer_def.set_rule_ids(&rule_ids);
 
-    let lexer = lexer_def.lexer(&input);
+    let lexer = lexer_def.lexer(&source);
     let lexemes = lexer.lexemes().map_err(|_| ParseError::LexicalError)?;
     let (sgraph, stable) = from_yacc(&grm, Minimiser::Pager)
         .map_err(|_| ParseError::BrokenParser)?;
@@ -69,7 +73,7 @@ pub fn parse_file(source_path: &Path, lex_path: &Path, yacc_path: &Path) -> Resu
     let pt = parser::parse::<u16>(&grm, &sgraph, &stable, &lexemes)
         .map_err(|_| ParseError::SyntaxError)?;
 
-    Ok(gen_bytecode(&pt, &grm, &input))
+    Ok(gen_bytecode(&pt, &grm, &source))
 }
 
 #[derive(Debug, Clone)]
@@ -98,6 +102,7 @@ pub enum Instr {
     JUMP_IF_FALSE(usize),
     JUMP(usize),
     RET,
+    EXIT,
 }
 
 #[derive(Debug)]
@@ -346,6 +351,12 @@ fn gen_bytecode(parse_tree: &Node<u16>, grm: &YaccGrammar, input: &str) -> Bytec
                         let method_name = ctx.get_value(&nodes[2]);
                         ctx.gen_bc(Instr::CALL(obj_name, method_name));
                     },
+                    "method_invocation_same_class" => {
+                        gen_args(&nodes[2], ctx);
+                        let obj_name = ctx.cur_cls.clone();
+                        let method_name = ctx.get_value(&nodes[0]);
+                        ctx.gen_bc(Instr::CALL(obj_name, method_name));
+                    },
                     "field_access" => {
                         let obj_name = ctx.get_value(&nodes[0]);
                         let field_name = ctx.get_value(&nodes[2]);
@@ -440,10 +451,15 @@ fn gen_bytecode(parse_tree: &Node<u16>, grm: &YaccGrammar, input: &str) -> Bytec
     // func_def : "DEF" "IDENTIFIER" "LPAREN" parameter_list_opt "RPAREN" block ;
     fn gen_func_def(node: &Node<u16>, ctx: &mut CompilerContext) {
         if let &Node::Nonterm{ nonterm_idx, ref nodes } = node {
-            ctx.register_function(&nodes[1]);
+            let (cls_name, fn_name) = ctx.register_function(&nodes[1]);
             gen_params(&nodes[3], ctx);
             gen_block(&nodes[5], ctx);
-            ctx.gen_bc(Instr::RET);
+            if (cls_name, fn_name) == ("global".to_string(), "main".to_string()) {
+                ctx.gen_bc(Instr::EXIT);
+            }
+            else {
+                ctx.gen_bc(Instr::RET);
+            }
         }
     }
 
@@ -475,4 +491,19 @@ fn gen_bytecode(parse_tree: &Node<u16>, grm: &YaccGrammar, input: &str) -> Bytec
         _ => panic!("Error")
     }
     Bytecode::new(ctx)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+    use parse::{parse_input, Bytecode};
+    const LEX_PATH: &str = "grammar/lexer.l";
+    const YACC_PATH: &str = "grammar/grammar.y";
+
+    fn build_bytecode(source: String) -> Bytecode {
+        let lex_path = Path::new(LEX_PATH);
+        let yacc_path = Path::new(YACC_PATH);
+        parse_input(source, &lex_path, &yacc_path).unwrap()
+    }
+    // tests go here
 }

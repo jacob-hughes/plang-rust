@@ -3,7 +3,7 @@
 \[  LSQUARE
 \]  RSQUARE
 \.  DOT
-;  SEMI
+;   SEMI
 ,   COMMA
 \{  LBRACE
 \}  RBRACE
