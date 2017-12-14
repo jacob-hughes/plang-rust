@@ -233,8 +233,13 @@ impl<'pt> CompilerContext<'pt> {
         let var_name = self.get_value(var);
         let ref key = (self.cur_cls.to_string(), self.cur_fn.to_string());
         let ref mut locals = self.symbols.get_mut(key).unwrap().locals;
-        locals.push(var_name);
-        locals.len() - 1
+        match locals.iter().position(|x| x == &var_name) {
+            Some(x) => x,
+            None => {
+                locals.push(var_name);
+                locals.len() - 1
+            }
+        }
     }
 
     fn gen_bc(&mut self , instr: Instr) -> usize {
@@ -434,7 +439,7 @@ fn gen_bytecode(parse_tree: &Node<u16>, grm: &YaccGrammar, input: &str) -> Bytec
         }
     }
 
-    //for_statement : "FOR" "LPAREN" expression "SEMICOLON" expression "SEMICOLON" expression block;
+    //for_statement : "FOR" "LPAREN" statement "SEMI" expression "SEMI" statement "RPAREN" block;
     fn gen_for(node: &Node<u16>, ctx: &mut CompilerContext) {
         if let &Node::Nonterm{ nonterm_idx, ref nodes } = node {
             gen_stmt(&nodes[2], ctx);
@@ -442,7 +447,8 @@ fn gen_bytecode(parse_tree: &Node<u16>, grm: &YaccGrammar, input: &str) -> Bytec
             let loop_entry = ctx.bytecode.len();
             gen_exp(&nodes[4], ctx); // conditional
             let exit_call = ctx.gen_bc(Instr::JUMP_IF_FALSE(PLACEHOLDER));
-            gen_block(&nodes[7], ctx); // loop body
+            gen_block(&nodes[8], ctx); // loop body
+            gen_stmt(&nodes[6], ctx); // step
             ctx.gen_bc(Instr::JUMP(loop_entry));
             ctx.patch(exit_call);
         }
