@@ -5,13 +5,25 @@ use std::collections::HashMap;
 static GLOBAL_NSPACE: &'static str = "global";
 static MAIN_FN: &'static str = "main";
 
-#[derive(Clone)]
-enum NativeType {
+#[derive(Debug, Clone)]
+pub enum NativeType {
     Int(i32),
     Double(f32),
     Bool(bool),
     Str(String),
     ObjectRef(usize),
+}
+
+impl NativeType {
+    fn pretty(&self) -> String {
+        match *self {
+            NativeType::Int(ref x) => x.to_string(),
+            NativeType::Double(ref x) => x.to_string(),
+            NativeType::Bool(ref x) => x.to_string(),
+            NativeType::Str(ref x) => x.to_string(),
+            NativeType::ObjectRef(ref x) => x.to_string(),
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -46,14 +58,12 @@ impl VM {
         }
     }
 
-    pub fn run(&mut self) {
+    pub fn run(&mut self) -> Option<NativeType> {
         self.enter_main();
+        let mut result = None;
         loop {
-            if self.pc >= self.bytecode.bytecode.len() {
-                break
-            }
-            let instr = &self.bytecode.bytecode[self.pc];
-            match *instr {
+            let instr = self.bytecode.bytecode[self.pc].clone();
+            match instr {
                 Instr::PUSH_INT(ref x) => {
                     let frame = self.frames.last_mut().unwrap();
                     frame.push(NativeType::Int(x.clone()));
@@ -101,7 +111,7 @@ impl VM {
                     {
                         let frame = self.frames.last_mut().unwrap();
                         for i in 0..fn_metadata.params_len() {
-                            new_frame.push(frame.pop())
+                            new_frame.locals.push(frame.pop())
                         }
                     }
                     self.frames.push(new_frame);
@@ -120,9 +130,18 @@ impl VM {
                     frame.push(return_value);
                     self.pc = return_address;
                 },
+                Instr::EXIT => {
+                    let frame = self.frames.last_mut().unwrap();
+                    result = match frame.peek() {
+                        Some(x) => Some(x.clone()),
+                        None => None
+                    };
+                    break
+                }
                 _ => (),
             };
         }
+        result
     }
 
     fn enter_main(&mut self) {
@@ -159,6 +178,10 @@ impl Frame {
         }
     }
 
+    pub fn peek(&mut self) -> Option<&NativeType> {
+         self.stack.last()
+    }
+
     fn load_local(&mut self, index: usize) {
         let value = self.locals[index].clone();
         self.push(value)
@@ -167,5 +190,14 @@ impl Frame {
     fn store_local(&mut self, index: usize) {
         let value = self.pop();
         self.locals[index] = value;
+    }
+}
+
+pub fn run(bytecode: Bytecode) -> String {
+    let mut vm = VM::new(bytecode);
+    let res = vm.run();
+    match res {
+        Some(ref x) => x.pretty(),
+        None => "".to_string(),
     }
 }

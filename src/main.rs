@@ -4,6 +4,10 @@ use std::vec::Vec;
 use std::collections::HashMap;
 use std::fmt;
 use std::path::Path;
+use std::env;
+
+extern crate plang_rust;
+use plang_rust::parse::parse_file;
 
 #[derive(Clone)]
 pub enum Node {
@@ -279,8 +283,6 @@ impl<'a> Frame<'a> {
 
 }
 
-mod parse;
-use std::env;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -288,7 +290,7 @@ fn main() {
     let lex_path    = Path::new("grammar/lexer.l");
     let yacc_path   = Path::new("grammar/grammar.y");
     let source_path = Path::new(source);
-    let res = parse::parse_file(source_path, lex_path, yacc_path);
+    let res = parse_file(source_path, lex_path, yacc_path);
     println!("{:?}", res);
 }
 

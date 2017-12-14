@@ -47,6 +47,7 @@ parameter_list : "IDENTIFIER"
 expression : variable
            | binary_expression
            | method_invocation
+           | method_invocation_same_class
            | field_access
            | class_instance_creation
            | literal
@@ -66,6 +67,8 @@ bin_op : "PLUS"
        ;
 
 method_invocation : "IDENTIFIER" "DOT" "IDENTIFIER" "LPAREN" arg_list_opt "RPAREN";
+
+method_invocation_same_class : "IDENTIFIER" "LPAREN" arg_list_opt "RPAREN";
 
 arg_list_opt :
              | arg_list
