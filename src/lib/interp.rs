@@ -4,6 +4,7 @@ use std::collections::HashMap;
 
 static GLOBAL_NSPACE: &'static str = "global";
 static MAIN_FN: &'static str = "main";
+const EXCEPTION_PTR: usize = 0;
 
 #[derive(Debug, Clone)]
 pub enum NativeType {
@@ -30,14 +31,12 @@ impl NativeType {
 
 #[derive(Clone)]
 struct Object {
-    class_name : String,
     fields: HashMap<String, NativeType>,
 }
 
 impl Object {
-    fn new(class_name: String) -> Object {
+    fn new() -> Object {
         Object {
-            class_name: class_name,
             fields: HashMap::new()
         }
     }
@@ -64,8 +63,21 @@ impl VM {
         self.enter_main();
         let mut result = None;
         loop {
-            let instr = self.bytecode.bytecode[self.pc].clone();
-            match instr {
+            let bytecode_size = self.bytecode.bytecode.len();
+            if self.pc >= bytecode_size {
+                let frame = self.frames.last_mut();
+                match frame {
+                    Some(x) => {
+                        match x.peek() {
+                            Some(y) => result = Some(y.clone()),
+                            None => (),
+                        }
+                    }
+                    None => (),
+                }
+                break
+            }
+            match *&self.bytecode.bytecode[self.pc] {
                 Instr::PUSH_INT(ref x) => {
                     let frame = self.frames.last_mut().unwrap();
                     frame.push(NativeType::Int(x.clone()));
@@ -131,6 +143,10 @@ impl VM {
                     frame.store_local(name);
                     self.pc += 1
                 }
+                Instr::RAISE => {
+                    let frame = self.frames.last_mut().unwrap();
+                    frame.raise("Exception");
+                }
                 Instr::LOAD_GLOBAL(ref name) => panic!("NotYetImplemented"),
                 Instr::STORE_GLOBAL(ref name) => panic!("NotYetImplemented"),
                 Instr::NEW_OBJECT => {
@@ -157,7 +173,6 @@ impl VM {
                     let frame = self.frames.last_mut().unwrap();
                     let obj_ref = frame.pop();
                     let value = frame.pop();
-                    println!("{:?}",obj_ref);
                     match obj_ref {
                         NativeType::ObjectRef(x) => {
                             let obj = self.heap.get_mut(x).unwrap();
@@ -200,7 +215,7 @@ impl VM {
                     };
                     locals.reverse(); // TODO: This can be more efficient if we rework
                                     // this to add args in reverse order in place
-                    let new_frame = Frame::new(locals, self.pc + 1);
+                    let new_frame = Frame::new(fn_name.to_string(), locals, self.pc + 1);
                     self.frames.push(new_frame);
                     self.pc = self.bytecode.labels.get(key).unwrap().clone();
                 },
@@ -230,6 +245,7 @@ impl VM {
                 }
                 _ => panic!("InstrNotImplemented"),
             };
+            self.unwind_stack_on_raise();
         }
         result
     }
@@ -238,22 +254,54 @@ impl VM {
         self.pc = self.bytecode.labels.get(
             &(GLOBAL_NSPACE.to_string(), MAIN_FN.to_string()))
             .expect("Main method not found").clone();
-        self.frames.push(Frame::new(Vec::new(), self.bytecode.bytecode.len()))
+        self.frames.push(Frame::new("main".to_string(), Vec::new(), self.bytecode.bytecode.len()))
+    }
+
+    fn unwind_stack_on_raise(&mut self) {
+        if self.frames.last().unwrap().raise {
+            let mut backtrace: Vec<NativeType> = Vec::new();
+            let mut try_index: usize = self.frames.len() - 1;
+            for (i, f) in self.frames.iter().rev().enumerate() {
+                if f.in_try {
+                    try_index = i;
+                    break
+                }
+                else {
+                    backtrace.push(NativeType::Str(f.name.to_string()));
+                }
+            }
+            let try_index = self.frames.len() - try_index - 1;
+            self.frames.drain(try_index..);
+            match self.frames.last() {
+                Some(ref x) => self.pc = x.return_address, //FIXME: WRONG
+                None => {
+                    eprintln!("Exception raised. Backtrace:");
+                    eprintln!("{:?}", backtrace);
+                    self.pc = usize::max_value()
+                }
+            }
+        }
     }
 }
 
 struct Frame {
     stack:  Vec<NativeType>,
     locals: Vec<NativeType>,
-    return_address: usize
+    return_address: usize,
+    raise: bool,
+    in_try: bool,
+    name: String
 }
 
 impl Frame {
-    fn new(locals: Vec<NativeType>, return_address: usize) -> Frame {
+    fn new(name: String, locals: Vec<NativeType>, return_address: usize) -> Frame {
         Frame {
             stack: Vec::new(),
             locals: locals,
             return_address: return_address,
+            raise: false,
+            in_try: false,
+            name: name
         }
     }
 
@@ -294,6 +342,12 @@ impl Frame {
         }
     }
 
+    fn raise(&mut self, msg: &str) {
+        self.push(NativeType::ObjectRef(EXCEPTION_PTR));
+        self.push(NativeType::Str(msg.to_string()));
+        self.raise = true
+    }
+
     fn add(&mut self) {
         let rhs = self.pop();
         let lhs = self.pop();
@@ -302,7 +356,7 @@ impl Frame {
             (NativeType::Int(x), NativeType::Double(y))     => self.push(NativeType::Double(x as f32 + y)),
             (NativeType::Double(x), NativeType::Int(y))     => self.push(NativeType::Double(x + y as f32)),
             (NativeType::Double(x), NativeType::Double(y))  => self.push(NativeType::Double(x+y)),
-            _ => panic!("TypeError"),
+            _ => self.raise("TypeError"),
         }
     }
 
@@ -314,7 +368,7 @@ impl Frame {
             (NativeType::Int(x), NativeType::Double(y))     => self.push(NativeType::Double(x as f32 - y)),
             (NativeType::Double(x), NativeType::Int(y))     => self.push(NativeType::Double(x - y as f32)),
             (NativeType::Double(x), NativeType::Double(y))  => self.push(NativeType::Double(x-y)),
-            _ => panic!("TypeError"),
+            _ => self.raise("TypeError"),
         }
     }
 
@@ -326,7 +380,7 @@ impl Frame {
             (NativeType::Int(x), NativeType::Double(y))     => self.push(NativeType::Bool(x as f32 <= y)),
             (NativeType::Double(x), NativeType::Int(y))     => self.push(NativeType::Bool(x <= y as f32)),
             (NativeType::Double(x), NativeType::Double(y))  => self.push(NativeType::Bool(x<=y)),
-            _ => panic!("TypeError"),
+            _ => self.raise("TypeError"),
         }
     }
 
@@ -338,7 +392,7 @@ impl Frame {
             (NativeType::Int(x), NativeType::Double(y))     => self.push(NativeType::Bool((x as f32) < y)),
             (NativeType::Double(x), NativeType::Int(y))     => self.push(NativeType::Bool(x < (y as f32))),
             (NativeType::Double(x), NativeType::Double(y))  => self.push(NativeType::Bool(x<y)),
-            _ => panic!("TypeError"),
+            _ => self.raise("TypeError"),
         }
     }
 
@@ -350,7 +404,7 @@ impl Frame {
             (NativeType::Int(x), NativeType::Double(y))     => self.push(NativeType::Bool((x as f32) > y)),
             (NativeType::Double(x), NativeType::Int(y))     => self.push(NativeType::Bool(x > (y as f32))),
             (NativeType::Double(x), NativeType::Double(y))  => self.push(NativeType::Bool(x>y)),
-            _ => panic!("TypeError"),
+            _ => self.raise("TypeError"),
         }
     }
 
@@ -362,7 +416,7 @@ impl Frame {
             (NativeType::Int(x), NativeType::Double(y))     => self.push(NativeType::Bool(x as f32 >= y)),
             (NativeType::Double(x), NativeType::Int(y))     => self.push(NativeType::Bool(x >= y as f32)),
             (NativeType::Double(x), NativeType::Double(y))  => self.push(NativeType::Bool(x>=y)),
-            _ => panic!("TypeError"),
+            _ => self.raise("TypeError"),
         }
     }
 
@@ -374,7 +428,7 @@ impl Frame {
             (NativeType::Int(x), NativeType::Double(y))     => self.push(NativeType::Bool(x as f32 == y)),
             (NativeType::Double(x), NativeType::Int(y))     => self.push(NativeType::Bool(x == (y as f32))),
             (NativeType::Double(x), NativeType::Double(y))  => self.push(NativeType::Bool(x==y)),
-            _ => panic!("TypeError"),
+            _ => self.raise("TypeError"),
         }
     }
 }

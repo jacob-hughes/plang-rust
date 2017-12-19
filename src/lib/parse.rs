@@ -90,6 +90,7 @@ pub enum Instr {
     LT,
     GT,
     EQEQ,
+    RAISE,
     LOAD_VAR(usize),
     STORE_VAR(usize),
     LOAD_GLOBAL(String),
@@ -310,6 +311,8 @@ fn gen_bytecode(parse_tree: &Node<u16>, grm: &YaccGrammar, input: &str) -> Bytec
     //           | if_statement
     //           | let_statement
     //           | for_statement
+    //           | try_except
+    //           | raise
     //           ;
     fn gen_stmt(node: &Node<u16>, ctx: &mut CompilerContext) {
         if let &Node::Nonterm{ nonterm_idx, ref nodes } = node {
@@ -319,6 +322,7 @@ fn gen_bytecode(parse_tree: &Node<u16>, grm: &YaccGrammar, input: &str) -> Bytec
                 "let_statement" => gen_let(&nodes[0], ctx),
                 "func_def"      => gen_func_def(&nodes[0], ctx),
                 "for_statement" => gen_for(&nodes[0], ctx),
+                "raise"         => gen_raise(&nodes[0], ctx),
                 _ => panic!("unknown nonterminal node")
             }
         }
@@ -438,6 +442,13 @@ fn gen_bytecode(parse_tree: &Node<u16>, grm: &YaccGrammar, input: &str) -> Bytec
             gen_exp(&nodes[3], ctx);
             let var_index = ctx.register_local(&nodes[1]);
             ctx.gen_bc(Instr::STORE_VAR(var_index));
+        }
+    }
+
+    //raise : "RAISE";
+    fn gen_raise(node: &Node<u16>, ctx: &mut CompilerContext) {
+        if let &Node::Nonterm{ nonterm_idx, ref nodes } = node {
+            ctx.gen_bc(Instr::RAISE);
         }
     }
 

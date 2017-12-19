@@ -363,3 +363,23 @@ fn instantiate_obj_args() {
     let res = run(bc);
     assert_eq!(res, "5");
 }
+
+#[test]
+fn raise_exception() {
+    let src = "
+        class global() {
+            def main() {
+                1 + foo()
+            };
+
+            def foo() {
+                raise
+            }
+        }
+    ";
+    let bc = build_bytecode(src.to_string());
+    println!("{:?}", bc);
+    let res = run(bc);
+    assert_eq!(res, "");
+}
+

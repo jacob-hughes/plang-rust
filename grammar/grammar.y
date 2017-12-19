@@ -26,6 +26,8 @@ statement : expression
           | let_statement
           | func_def
           | for_statement
+          | try_except
+          | raise
           ;
 
 if_statement : "IF" expression block;
@@ -35,6 +37,10 @@ let_statement : "LET" "IDENTIFIER" "EQ" expression;
 for_statement : "FOR" "LPAREN" statement "SEMI" expression "SEMI" statement "RPAREN" block;
 
 func_def    : "DEF" "IDENTIFIER" "LPAREN" parameter_list_opt "RPAREN" block ;
+
+try_except : "TRY" block "EXCEPT" block;
+
+raise : "RAISE";
 
 parameter_list_opt :
                    | parameter_list
