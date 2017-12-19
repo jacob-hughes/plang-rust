@@ -12,6 +12,7 @@ pub enum NativeType {
     Bool(bool),
     Str(String),
     ObjectRef(usize),
+    NoneType,
 }
 
 impl NativeType {
@@ -21,7 +22,8 @@ impl NativeType {
             NativeType::Double(ref x) => x.to_string(),
             NativeType::Bool(ref x) => x.to_string(),
             NativeType::Str(ref x) => x.to_string(),
-            NativeType::ObjectRef(ref x) => x.to_string(),
+            NativeType::ObjectRef(ref x) => format!("&{}",x.to_string()),
+            NativeType::NoneType => "None".to_string()
         }
     }
 }
@@ -79,6 +81,11 @@ impl VM {
                     frame.pop();
                     self.pc +=1
                 }
+                Instr::DUP => {
+                    let frame = self.frames.last_mut().unwrap();
+                    frame.dup();
+                    self.pc += 1
+                }
                 Instr::ADD => {
                     let frame = self.frames.last_mut().unwrap();
                     frame.add();
@@ -126,9 +133,40 @@ impl VM {
                 }
                 Instr::LOAD_GLOBAL(ref name) => panic!("NotYetImplemented"),
                 Instr::STORE_GLOBAL(ref name) => panic!("NotYetImplemented"),
-                Instr::NEW_OBJECT(ref class_name) => panic!("NotYetImplemented"),
-                Instr::LOAD_FIELD(ref field_name) => panic!("NotYetImplemented"),
-                Instr::STORE_FIELD(ref field_name) => panic!("NotYetImplemented"),
+                Instr::NEW_OBJECT => {
+                    let obj = Object::new();
+                    self.heap.push(obj);
+                    let obj_ref = self.heap.len() - 1;
+                    let frame = self.frames.last_mut().unwrap();
+                    frame.push(NativeType::ObjectRef(obj_ref));
+                    self.pc += 1
+                },
+                Instr::LOAD_FIELD(ref field_name) => {
+                    let frame = self.frames.last_mut().unwrap();
+                    let obj_ref = frame.pop();
+                    let obj = match obj_ref {
+                        NativeType::ObjectRef(x) => self.heap.get(x).unwrap(),
+                        _ => panic!("Not a valid object")
+                    };
+                    let field = obj.fields.get(field_name)
+                        .expect("Field not found");
+                    frame.push(field.clone());
+                    self.pc += 1
+                }
+                Instr::STORE_FIELD(ref field_name) => {
+                    let frame = self.frames.last_mut().unwrap();
+                    let obj_ref = frame.pop();
+                    let value = frame.pop();
+                    println!("{:?}",obj_ref);
+                    match obj_ref {
+                        NativeType::ObjectRef(x) => {
+                            let obj = self.heap.get_mut(x).unwrap();
+                            obj.fields.insert(field_name.to_string(), value);
+                        }
+                        _ => panic!("Not a valid object")
+                    };
+                    self.pc += 1
+                },
                 Instr::JUMP_IF_TRUE(pos) => {
                     let frame = self.frames.last_mut().unwrap();
                     if let NativeType::Bool(true) = frame.pop() {
@@ -152,20 +190,30 @@ impl VM {
                     let ref key = (class_name.to_string(), fn_name.to_string());
                     let fn_metadata = self.bytecode.symbols.get(&key.clone())
                         .expect("Function not found");
-                    let mut new_frame = Frame::new(self.pc + 1);
-                    {
+                    let mut locals = {
                         let frame = self.frames.last_mut().unwrap();
+                        let mut locals = Vec::new();
                         for i in 0..fn_metadata.params_len() {
-                            new_frame.locals.push(frame.pop())
+                            locals.push(frame.pop())
                         }
-                    }
+                        locals
+                    };
+                    locals.reverse(); // TODO: This can be more efficient if we rework
+                                    // this to add args in reverse order in place
+                    let new_frame = Frame::new(locals, self.pc + 1);
                     self.frames.push(new_frame);
                     self.pc = self.bytecode.labels.get(key).unwrap().clone();
                 },
                 Instr::RET => {
                     let (return_value, return_address) =  {
                         let frame = self.frames.last_mut().unwrap();
-                        (frame.pop(), frame.return_address)
+                        let ret_val = if frame.stack.len() > 0 {
+                            frame.pop()
+                        }
+                        else {
+                            NativeType::NoneType
+                        };
+                        (ret_val, frame.return_address)
                     };
                     self.frames.pop();
                     let frame = self.frames.last_mut().unwrap();
@@ -190,7 +238,7 @@ impl VM {
         self.pc = self.bytecode.labels.get(
             &(GLOBAL_NSPACE.to_string(), MAIN_FN.to_string()))
             .expect("Main method not found").clone();
-        self.frames.push(Frame::new(self.bytecode.bytecode.len()))
+        self.frames.push(Frame::new(Vec::new(), self.bytecode.bytecode.len()))
     }
 }
 
@@ -201,26 +249,31 @@ struct Frame {
 }
 
 impl Frame {
-    pub fn new(return_address: usize) -> Frame {
+    fn new(locals: Vec<NativeType>, return_address: usize) -> Frame {
         Frame {
             stack: Vec::new(),
-            locals: Vec::new(),
+            locals: locals,
             return_address: return_address,
         }
     }
 
-    pub fn push(&mut self, obj: NativeType) {
+    fn push(&mut self, obj: NativeType) {
         self.stack.push(obj);
     }
 
-    pub fn pop(&mut self) -> NativeType {
+    fn pop(&mut self) -> NativeType {
         match self.stack.pop() {
             Some(x) => x,
             None => panic!("Popped from empty stack!"),
         }
     }
 
-    pub fn peek(&mut self) -> Option<&NativeType> {
+    fn dup(&mut self) {
+        let tos = self.peek().unwrap().clone();
+        self.push(tos)
+    }
+
+    fn peek(&mut self) -> Option<&NativeType> {
          self.stack.last()
     }
 
@@ -241,7 +294,7 @@ impl Frame {
         }
     }
 
-    pub fn add(&mut self) {
+    fn add(&mut self) {
         let rhs = self.pop();
         let lhs = self.pop();
         match (lhs, rhs) {
@@ -253,7 +306,7 @@ impl Frame {
         }
     }
 
-    pub fn sub(&mut self) {
+    fn sub(&mut self) {
         let rhs = self.pop();
         let lhs = self.pop();
         match (lhs, rhs) {
@@ -265,7 +318,7 @@ impl Frame {
         }
     }
 
-    pub fn lteq(&mut self) {
+    fn lteq(&mut self) {
         let rhs = self.pop();
         let lhs = self.pop();
         match (lhs, rhs) {
@@ -277,7 +330,7 @@ impl Frame {
         }
     }
 
-    pub fn lt(&mut self) {
+    fn lt(&mut self) {
         let rhs = self.pop();
         let lhs = self.pop();
         match (lhs, rhs) {
@@ -289,7 +342,7 @@ impl Frame {
         }
     }
 
-    pub fn gt(&mut self) {
+    fn gt(&mut self) {
         let rhs = self.pop();
         let lhs = self.pop();
         match (lhs, rhs) {
@@ -301,7 +354,7 @@ impl Frame {
         }
     }
 
-    pub fn gteq(&mut self) {
+    fn gteq(&mut self) {
         let rhs = self.pop();
         let lhs = self.pop();
         match (lhs, rhs) {

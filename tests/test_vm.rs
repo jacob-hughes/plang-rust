@@ -296,3 +296,70 @@ fn nested_for() {
     let res = run(bc);
     assert_eq!(res, "100");
 }
+
+#[test]
+fn passing_args() {
+    let src = "
+        class global() {
+            def main() {
+                let hello = 5;
+                foo(hello);
+                hello
+            };
+
+            def foo(x) {
+                let x = 10;
+                x
+            }
+        }
+    ";
+    let bc = build_bytecode(src.to_string());
+    println!("{:?}", bc);
+    let res = run(bc);
+    assert_eq!(res, "5");
+
+}
+
+#[test]
+fn instantiate_obj() {
+    let src = "
+        class global() {
+            def main() {
+                let x = new Foo();
+                x.y
+            }
+        }
+
+        class Foo() {
+            def construct(self) {
+                self.y = 6
+            }
+        }
+    ";
+    let bc = build_bytecode(src.to_string());
+    println!("{:?}", bc);
+    let res = run(bc);
+    assert_eq!(res, "6");
+}
+
+#[test]
+fn instantiate_obj_args() {
+    let src = "
+        class global() {
+            def main() {
+                let x = new Foo(5, 6);
+                x.x
+            }
+        }
+
+        class Foo() {
+            def construct(self, x, y) {
+                self.x = x
+            }
+        }
+    ";
+    let bc = build_bytecode(src.to_string());
+    println!("{:?}", bc);
+    let res = run(bc);
+    assert_eq!(res, "5");
+}

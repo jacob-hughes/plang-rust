@@ -49,6 +49,7 @@ expression : variable
            | method_invocation
            | method_invocation_same_class
            | field_access
+           | field_set
            | class_instance_creation
            | literal
            ;
@@ -82,7 +83,7 @@ field_access : "IDENTIFIER" "DOT" "IDENTIFIER";
 
 field_set : "IDENTIFIER" "DOT" "IDENTIFIER" "EQ" expression;
 
-class_instance_creation : "NEW" "IDENTIFIER" "LPAREN" parameter_list_opt "RPAREN";
+class_instance_creation : "NEW" "IDENTIFIER" "LPAREN" arg_list_opt "RPAREN";
 
 literal : "INT_LITERAL"
         | "BOOL_LITERAL"

@@ -22,6 +22,8 @@ use self::cfgrammar::yacc::{yacc_grm, YaccGrammar, YaccKind};
 // value is, because it is switched out almost immediately.
 const PLACEHOLDER: usize = usize::max_value();
 
+static CONSTRUCTOR: &'static str = "construct";
+
 #[derive(Debug)]
 pub enum ParseError {
     IO(String),
@@ -92,7 +94,7 @@ pub enum Instr {
     STORE_VAR(usize),
     LOAD_GLOBAL(String),
     STORE_GLOBAL(String),
-    NEW_OBJECT(String),
+    NEW_OBJECT,
     LOAD_FIELD(String),
     STORE_FIELD(String),
     SWAP,
@@ -274,12 +276,19 @@ fn gen_bytecode(parse_tree: &Node<u16>, grm: &YaccGrammar, input: &str) -> Bytec
     //                  | "IDENTIFIER"
     //                  ;
     fn gen_class(node: &Node<u16>, ctx: &mut CompilerContext) {
-        match *node {
-            Node::Nonterm { nonterm_idx, ref nodes } => {
-                ctx.register_class(&nodes[1]);
-                gen_block(&nodes[5], ctx);
+       if let &Node::Nonterm { nonterm_idx, ref nodes } = node {
+            match ctx.get_name(node).as_ref(){
+                "class_def" => {
+                    ctx.register_class(&nodes[1]);
+                    gen_block(&nodes[5], ctx);
+                },
+                "prog" => {
+                    for child in nodes {
+                        gen_class(child, ctx)
+                    }
+                }
+                _ => panic!("Unknown class def")
             }
-            _ => panic!("Class nonterm expected")
         }
     }
 
@@ -363,22 +372,25 @@ fn gen_bytecode(parse_tree: &Node<u16>, grm: &YaccGrammar, input: &str) -> Bytec
                         ctx.gen_bc(Instr::CALL(obj_name, method_name));
                     },
                     "field_access" => {
-                        let obj_name = ctx.get_value(&nodes[0]);
+                        let obj_alias = ctx.get_var_offset(&nodes[0]);
                         let field_name = ctx.get_value(&nodes[2]);
-                        ctx.gen_bc(Instr::PUSH_STR(obj_name));
+                        ctx.gen_bc(Instr::LOAD_VAR(obj_alias));
                         ctx.gen_bc(Instr::LOAD_FIELD(field_name));
                     },
                     "field_set" => {
                         gen_exp(&nodes[4], ctx);
-                        let obj_name = ctx.get_value(&nodes[0]);
+                        let obj_alias = ctx.get_var_offset(&nodes[0]);
                         let field_name = ctx.get_value(&nodes[2]);
-                        ctx.gen_bc(Instr::PUSH_STR(obj_name));
+                        ctx.gen_bc(Instr::LOAD_VAR(obj_alias));
                         ctx.gen_bc(Instr::STORE_FIELD(field_name));
                     },
                     "class_instance_creation" => {
-                        gen_args(&nodes[4], ctx);
                         let cls_name = ctx.get_value(&nodes[1]);
-                        ctx.gen_bc(Instr::NEW_OBJECT(cls_name));
+                        ctx.gen_bc(Instr::NEW_OBJECT);
+                        ctx.gen_bc(Instr::DUP);
+                        gen_args(&nodes[3], ctx);
+                        ctx.gen_bc(Instr::CALL(cls_name, CONSTRUCTOR.to_string()));
+                        ctx.gen_bc(Instr::POP); // remove returned NoneType, leaving obj instance
                     },
                     "literal" => {
                         let lit_type =  ctx.get_name(&nodes[0]);
