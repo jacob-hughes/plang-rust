@@ -78,78 +78,78 @@ impl VM {
                 break
             }
             match *&self.bytecode.bytecode[self.pc] {
-                Instr::PUSH_INT(ref x) => {
+                Instr::PushInt(ref x) => {
                     let frame = self.frames.last_mut().unwrap();
                     frame.push(NativeType::Int(x.clone()));
                     self.pc += 1
                 }
-                Instr::PUSH_STR(ref x) => {
+                Instr::PushStr(ref x) => {
                     let frame = self.frames.last_mut().unwrap();
                     frame.push(NativeType::Str(x.clone()));
                     self.pc += 1
                 }
-                Instr::POP => {
+                Instr::Pop => {
                     let frame = self.frames.last_mut().unwrap();
                     frame.pop();
                     self.pc +=1
                 }
-                Instr::DUP => {
+                Instr::Dup => {
                     let frame = self.frames.last_mut().unwrap();
                     frame.dup();
                     self.pc += 1
                 }
-                Instr::ADD => {
+                Instr::Add => {
                     let frame = self.frames.last_mut().unwrap();
                     frame.add();
                     self.pc +=1
                 }
-                Instr::SUB => {
+                Instr::Sub => {
                     let frame = self.frames.last_mut().unwrap();
                     frame.sub();
                     self.pc +=1
                 }
-                Instr::LTEQ => {
+                Instr::Lteq => {
                     let frame = self.frames.last_mut().unwrap();
                     frame.lteq();
                     self.pc +=1
                 }
-                Instr::GTEQ =>{
+                Instr::Gteq =>{
                     let frame = self.frames.last_mut().unwrap();
                     frame.gteq();
                     self.pc +=1
                 }
-                Instr::LT =>{
+                Instr::Lt =>{
                     let frame = self.frames.last_mut().unwrap();
                     frame.lt();
                     self.pc +=1
                 }
-                Instr::GT =>{
+                Instr::Gt =>{
                     let frame = self.frames.last_mut().unwrap();
                     frame.gt();
                     self.pc +=1
                 }
-                Instr::EQEQ =>{
+                Instr::Eqeq =>{
                     let frame = self.frames.last_mut().unwrap();
                     frame.eq();
                     self.pc +=1
                 }
-                Instr::LOAD_VAR(index) => {
+                Instr::LoadVar(index) => {
                     let frame = self.frames.last_mut().unwrap();
                     frame.load_local(index);
                     self.pc += 1
                 }
-                Instr::STORE_VAR(name) => {
+                Instr::StoreVar(name) => {
                     let frame = self.frames.last_mut().unwrap();
                     frame.store_local(name);
                     self.pc += 1
                 }
-                Instr::RAISE => {
+                Instr::Raise => {
                     let frame = self.frames.last_mut().unwrap();
                     frame.raise("Exception");
                 }
-                Instr::LOAD_GLOBAL(ref name) => panic!("NotYetImplemented"),
-                Instr::STORE_GLOBAL(ref name) => panic!("NotYetImplemented"),
-                Instr::NEW_OBJECT => {
+                Instr::LoadGlobal(ref name) => panic!("NotYetImplemented"),
+                Instr::StoreGlobal(ref name) => panic!("NotYetImplemented"),
+                Instr::NewObject => {
                     let obj = Object::new();
                     self.heap.push(obj);
                     let obj_ref = self.heap.len() - 1;
@@ -157,7 +157,7 @@ impl VM {
                     frame.push(NativeType::ObjectRef(obj_ref));
                     self.pc += 1
                 },
-                Instr::LOAD_FIELD(ref field_name) => {
+                Instr::LoadField(ref field_name) => {
                     let frame = self.frames.last_mut().unwrap();
                     let obj_ref = frame.pop();
                     let obj = match obj_ref {
@@ -169,7 +169,7 @@ impl VM {
                     frame.push(field.clone());
                     self.pc += 1
                 }
-                Instr::STORE_FIELD(ref field_name) => {
+                Instr::StoreField(ref field_name) => {
                     let frame = self.frames.last_mut().unwrap();
                     let obj_ref = frame.pop();
                     let value = frame.pop();
@@ -182,7 +182,7 @@ impl VM {
                     };
                     self.pc += 1
                 },
-                Instr::JUMP_IF_TRUE(pos) => {
+                Instr::JumpIfTrue(pos) => {
                     let frame = self.frames.last_mut().unwrap();
                     if let NativeType::Bool(true) = frame.pop() {
                         self.pc = pos
@@ -191,7 +191,7 @@ impl VM {
                         self.pc += 1
                     }
                 },
-                Instr::JUMP_IF_FALSE(pos) => {
+                Instr::JumpIfFalse(pos) => {
                     let frame = self.frames.last_mut().unwrap();
                     if let NativeType::Bool(false) = frame.pop() {
                         self.pc = pos
@@ -200,8 +200,8 @@ impl VM {
                         self.pc += 1
                     }
                 },
-                Instr::JUMP(pos) => self.pc = pos,
-                Instr::CALL(ref class_name, ref fn_name) => {
+                Instr::Jump(pos) => self.pc = pos,
+                Instr::Call(ref class_name, ref fn_name) => {
                     let ref key = (class_name.to_string(), fn_name.to_string());
                     let fn_metadata = self.bytecode.symbols.get(&key.clone())
                         .expect("Function not found");
@@ -219,7 +219,7 @@ impl VM {
                     self.frames.push(new_frame);
                     self.pc = self.bytecode.labels.get(key).unwrap().clone();
                 },
-                Instr::RET => {
+                Instr::Ret => {
                     let (return_value, return_address) =  {
                         let frame = self.frames.last_mut().unwrap();
                         let ret_val = if frame.stack.len() > 0 {
@@ -235,7 +235,7 @@ impl VM {
                     frame.push(return_value);
                     self.pc = return_address;
                 },
-                Instr::EXIT => {
+                Instr::Exit => {
                     let frame = self.frames.last_mut().unwrap();
                     result = match frame.peek() {
                         Some(x) => Some(x.clone()),
