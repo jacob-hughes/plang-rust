@@ -147,8 +147,8 @@ impl VM {
                     let frame = self.frames.last_mut().unwrap();
                     frame.raise("Exception");
                 }
-                Instr::LoadGlobal(ref name) => panic!("NotYetImplemented"),
-                Instr::StoreGlobal(ref name) => panic!("NotYetImplemented"),
+                Instr::LoadGlobal(ref _name) => panic!("NotYetImplemented"),
+                Instr::StoreGlobal(ref _name) => panic!("NotYetImplemented"),
                 Instr::NewObject => {
                     let obj = Object::new();
                     self.heap.push(obj);
@@ -208,7 +208,7 @@ impl VM {
                     let mut locals = {
                         let frame = self.frames.last_mut().unwrap();
                         let mut locals = Vec::new();
-                        for i in 0..fn_metadata.params_len() {
+                        for _ in 0..fn_metadata.params_len() {
                             locals.push(frame.pop())
                         }
                         locals
