@@ -8,11 +8,10 @@ use std::fs::File;
 use std::io::Read;
 use std::convert::{TryFrom, TryInto};
 use std::collections::HashMap;
-use std::fmt;
 
 use self::lrpar::parser;
 use self::lrpar::parser::Node;
-use self::lrlex::{build_lex, Lexer};
+use self::lrlex::{build_lex};
 use self::lrtable::{Minimiser, from_yacc};
 
 use self::cfgrammar::TIdx;
@@ -21,6 +20,8 @@ use self::cfgrammar::yacc::{yacc_grm, YaccGrammar, YaccKind};
 // This can be arbitrary, ultimately it doesn't matter what the placeholder's
 // value is, because it is switched out almost immediately.
 const PLACEHOLDER: usize = usize::max_value();
+
+static CONSTRUCTOR: &'static str = "construct";
 
 #[derive(Debug)]
 pub enum ParseError {
@@ -78,31 +79,32 @@ pub fn parse_input(source: String, lex_path: &Path, yacc_path: &Path) -> Result<
 
 #[derive(Debug, Clone)]
 pub enum Instr {
-    PUSH_INT(i32),
-    PUSH_STR(String),
-    POP,
-    ADD,
-    SUB,
-    LTEQ,
-    GTEQ,
-    LT,
-    GT,
-    EQEQ,
-    LOAD_VAR(usize),
-    STORE_VAR(usize),
-    LOAD_GLOBAL(String),
-    STORE_GLOBAL(String),
-    NEW_OBJECT(String),
-    LOAD_FIELD(String),
-    STORE_FIELD(String),
-    SWAP,
-    DUP,
-    CALL(String, String),
-    JUMP_IF_TRUE(usize),
-    JUMP_IF_FALSE(usize),
-    JUMP(usize),
-    RET,
-    EXIT,
+    PushInt(i32),
+    PushStr(String),
+    Pop,
+    Add,
+    Sub,
+    Lteq,
+    Gteq,
+    Lt,
+    Gt,
+    Eqeq,
+    Raise,
+    LoadVar(usize),
+    StoreVar(usize),
+    LoadGlobal(String),
+    StoreGlobal(String),
+    NewObject,
+    LoadField(String),
+    StoreField(String),
+    Swap,
+    Dup,
+    Call(String, String),
+    JumpIfTrue(usize),
+    JumpIfFalse(usize),
+    Jump(usize),
+    Ret,
+    Exit,
 }
 
 #[derive(Debug)]
@@ -180,8 +182,8 @@ impl<'pt> CompilerContext<'pt> {
         let patch_value = self.bytecode.len();
         let ref mut jump_instr = self.bytecode[pos];
         match *jump_instr {
-            Instr::JUMP_IF_TRUE(ref mut _i) => *_i = patch_value,
-            Instr::JUMP_IF_FALSE(ref mut _i) => *_i = patch_value,
+            Instr::JumpIfTrue(ref mut _i) => *_i = patch_value,
+            Instr::JumpIfFalse(ref mut _i) => *_i = patch_value,
             _ => panic!("Unknown jump instruction")
         }
     }
@@ -190,7 +192,7 @@ impl<'pt> CompilerContext<'pt> {
     // functions in the symbol table.
     fn register_class(&mut self, class: &Node<u16>) {
         match *class {
-            Node::Term { lexeme } => {
+            Node::Term { .. } => {
                 let class_name = self.get_value(class);
                 self.cur_cls   = class_name.clone();
             }
@@ -200,7 +202,7 @@ impl<'pt> CompilerContext<'pt> {
 
     fn register_function(&mut self, func: &Node<u16>) -> (String, String) {
         match *func {
-            Node::Term { lexeme } => {
+            Node::Term { .. } => {
                 let func_name = self.get_value(func);
                 self.cur_fn = func_name.clone();
                 let fn_entry_point = self.bytecode.len();
@@ -257,7 +259,7 @@ impl<'pt> CompilerContext<'pt> {
 
     fn get_name(&self, node: &Node<u16>) -> String {
         match *node {
-            Node::Nonterm { nonterm_idx, ref nodes } => {
+            Node::Nonterm { nonterm_idx, .. } => {
                 self.grm.nonterm_name(nonterm_idx).to_string()
             }
             Node::Term { lexeme } => {
@@ -274,12 +276,19 @@ fn gen_bytecode(parse_tree: &Node<u16>, grm: &YaccGrammar, input: &str) -> Bytec
     //                  | "IDENTIFIER"
     //                  ;
     fn gen_class(node: &Node<u16>, ctx: &mut CompilerContext) {
-        match *node {
-            Node::Nonterm { nonterm_idx, ref nodes } => {
-                ctx.register_class(&nodes[1]);
-                gen_block(&nodes[5], ctx);
+       if let &Node::Nonterm { ref nodes, .. } = node {
+            match ctx.get_name(node).as_ref(){
+                "class_def" => {
+                    ctx.register_class(&nodes[1]);
+                    gen_block(&nodes[5], ctx);
+                },
+                "prog" => {
+                    for child in nodes {
+                        gen_class(child, ctx)
+                    }
+                }
+                _ => panic!("Unknown class def")
             }
-            _ => panic!("Class nonterm expected")
         }
     }
 
@@ -287,7 +296,7 @@ fn gen_bytecode(parse_tree: &Node<u16>, grm: &YaccGrammar, input: &str) -> Bytec
     //                  | block_statements "SEMI" statement
     //                  ;
     fn gen_block(node: &Node<u16>, ctx: &mut CompilerContext) {
-        if let &Node::Nonterm{ nonterm_idx, ref nodes } = node {
+        if let &Node::Nonterm{ ref nodes, .. } = node {
             for child in nodes {
                 match ctx.get_name(child).as_ref(){
                     "statement" => gen_stmt(child, ctx),
@@ -301,15 +310,18 @@ fn gen_bytecode(parse_tree: &Node<u16>, grm: &YaccGrammar, input: &str) -> Bytec
     //           | if_statement
     //           | let_statement
     //           | for_statement
+    //           | try_except
+    //           | raise
     //           ;
     fn gen_stmt(node: &Node<u16>, ctx: &mut CompilerContext) {
-        if let &Node::Nonterm{ nonterm_idx, ref nodes } = node {
+        if let &Node::Nonterm{ ref nodes, .. } = node {
             match ctx.get_name(&nodes[0]).as_ref(){
                 "expression"    => gen_exp(&nodes[0], ctx),
                 "if_statement"  => gen_if(&nodes[0], ctx),
                 "let_statement" => gen_let(&nodes[0], ctx),
                 "func_def"      => gen_func_def(&nodes[0], ctx),
                 "for_statement" => gen_for(&nodes[0], ctx),
+                "raise"         => gen_raise(&nodes[0], ctx),
                 _ => panic!("unknown nonterminal node")
             }
         }
@@ -323,29 +335,29 @@ fn gen_bytecode(parse_tree: &Node<u16>, grm: &YaccGrammar, input: &str) -> Bytec
     //            | literal
     //            ;
     fn gen_exp(node: &Node<u16>, ctx: &mut CompilerContext) {
-        if let &Node::Nonterm{ nonterm_idx, ref nodes } = node {
+        if let &Node::Nonterm{ ref nodes, .. } = node {
             let exp_type = &nodes[0];
             let name = ctx.get_name(exp_type);
-            if let &Node::Nonterm{ nonterm_idx, ref nodes } = exp_type {
+            if let &Node::Nonterm{ ref nodes, .. } = exp_type {
                 match name.as_ref() {
                     "variable" => {
                         let var_offset = ctx.get_var_offset(&nodes[0]);
-                        ctx.gen_bc(Instr::LOAD_VAR(var_offset));
+                        ctx.gen_bc(Instr::LoadVar(var_offset));
                     }
                     "binary_expression" => {
                         gen_exp(&nodes[0], ctx);
                         gen_exp(&nodes[2], ctx);
                         let bin_op = &nodes[1];
-                        if let &Node::Nonterm{ nonterm_idx, ref nodes } = bin_op {
+                        if let &Node::Nonterm{ref nodes, .. } = bin_op {
                             let operator = &nodes[0];
                             match ctx.get_name(operator).as_ref() {
-                                "PLUS"  => ctx.gen_bc(Instr::ADD),
-                                "MINUS" => ctx.gen_bc(Instr::SUB),
-                                "LTEQ"  => ctx.gen_bc(Instr::LTEQ),
-                                "GTEQ"  => ctx.gen_bc(Instr::GTEQ),
-                                "LT"    => ctx.gen_bc(Instr::LT),
-                                "GT"    => ctx.gen_bc(Instr::GT),
-                                "EQEQ"  => ctx.gen_bc(Instr::EQEQ),
+                                "PLUS"  => ctx.gen_bc(Instr::Add),
+                                "MINUS" => ctx.gen_bc(Instr::Sub),
+                                "LTEQ"  => ctx.gen_bc(Instr::Lteq),
+                                "GTEQ"  => ctx.gen_bc(Instr::Gteq),
+                                "LT"    => ctx.gen_bc(Instr::Lt),
+                                "GT"    => ctx.gen_bc(Instr::Gt),
+                                "EQEQ"  => ctx.gen_bc(Instr::Eqeq),
                                 _       => panic!("Unknown operator")
                             };
                         }
@@ -354,31 +366,34 @@ fn gen_bytecode(parse_tree: &Node<u16>, grm: &YaccGrammar, input: &str) -> Bytec
                         gen_args(&nodes[4], ctx);
                         let obj_name = ctx.get_value(&nodes[0]);
                         let method_name = ctx.get_value(&nodes[2]);
-                        ctx.gen_bc(Instr::CALL(obj_name, method_name));
+                        ctx.gen_bc(Instr::Call(obj_name, method_name));
                     },
                     "method_invocation_same_class" => {
                         gen_args(&nodes[2], ctx);
                         let obj_name = ctx.cur_cls.clone();
                         let method_name = ctx.get_value(&nodes[0]);
-                        ctx.gen_bc(Instr::CALL(obj_name, method_name));
+                        ctx.gen_bc(Instr::Call(obj_name, method_name));
                     },
                     "field_access" => {
-                        let obj_name = ctx.get_value(&nodes[0]);
+                        let obj_alias = ctx.get_var_offset(&nodes[0]);
                         let field_name = ctx.get_value(&nodes[2]);
-                        ctx.gen_bc(Instr::PUSH_STR(obj_name));
-                        ctx.gen_bc(Instr::LOAD_FIELD(field_name));
+                        ctx.gen_bc(Instr::LoadVar(obj_alias));
+                        ctx.gen_bc(Instr::LoadField(field_name));
                     },
                     "field_set" => {
                         gen_exp(&nodes[4], ctx);
-                        let obj_name = ctx.get_value(&nodes[0]);
+                        let obj_alias = ctx.get_var_offset(&nodes[0]);
                         let field_name = ctx.get_value(&nodes[2]);
-                        ctx.gen_bc(Instr::PUSH_STR(obj_name));
-                        ctx.gen_bc(Instr::STORE_FIELD(field_name));
+                        ctx.gen_bc(Instr::LoadVar(obj_alias));
+                        ctx.gen_bc(Instr::StoreField(field_name));
                     },
                     "class_instance_creation" => {
-                        gen_args(&nodes[4], ctx);
                         let cls_name = ctx.get_value(&nodes[1]);
-                        ctx.gen_bc(Instr::NEW_OBJECT(cls_name));
+                        ctx.gen_bc(Instr::NewObject);
+                        ctx.gen_bc(Instr::Dup);
+                        gen_args(&nodes[3], ctx);
+                        ctx.gen_bc(Instr::Call(cls_name, CONSTRUCTOR.to_string()));
+                        ctx.gen_bc(Instr::Pop); // remove returned NoneType, leaving obj instance
                     },
                     "literal" => {
                         let lit_type =  ctx.get_name(&nodes[0]);
@@ -386,10 +401,10 @@ fn gen_bytecode(parse_tree: &Node<u16>, grm: &YaccGrammar, input: &str) -> Bytec
                         match lit_type.as_ref(){
                             "INT_LITERAL" => {
                                 let int = lit_value.parse::<i32>().unwrap();
-                                ctx.gen_bc(Instr::PUSH_INT(int))
+                                ctx.gen_bc(Instr::PushInt(int))
                             }
                             "STR_LITERAL" => {
-                                ctx.gen_bc(Instr::PUSH_STR(lit_value))
+                                ctx.gen_bc(Instr::PushStr(lit_value))
                             }
                             _ => panic!("NotYetImplemented")
                         };
@@ -408,7 +423,7 @@ fn gen_bytecode(parse_tree: &Node<u16>, grm: &YaccGrammar, input: &str) -> Bytec
     //          | parameter_list "COMMA" expression
     //          ;
     fn gen_args(node: &Node<u16>, ctx: &mut CompilerContext) {
-        if let &Node::Nonterm { nonterm_idx, ref nodes } = node {
+        if let &Node::Nonterm { ref nodes, .. } = node {
             for child in nodes.iter() {
                 match ctx.get_name(child).as_ref() {
                     "arg_list" => gen_args(child, ctx),
@@ -422,18 +437,25 @@ fn gen_bytecode(parse_tree: &Node<u16>, grm: &YaccGrammar, input: &str) -> Bytec
 
     //let_statement : "LET" "IDENTIFIER" "EQ" expression;
     fn gen_let(node: &Node<u16>, ctx: &mut CompilerContext) {
-        if let &Node::Nonterm{ nonterm_idx, ref nodes } = node {
+        if let &Node::Nonterm{ ref nodes, .. } = node {
             gen_exp(&nodes[3], ctx);
             let var_index = ctx.register_local(&nodes[1]);
-            ctx.gen_bc(Instr::STORE_VAR(var_index));
+            ctx.gen_bc(Instr::StoreVar(var_index));
+        }
+    }
+
+    //raise : "RAISE";
+    fn gen_raise(node: &Node<u16>, ctx: &mut CompilerContext) {
+        if let &Node::Nonterm{..} = node {
+            ctx.gen_bc(Instr::Raise);
         }
     }
 
     //if_statement : "IF" expression block;
     fn gen_if(node: &Node<u16>, ctx: &mut CompilerContext) {
-        if let &Node::Nonterm{ nonterm_idx, ref nodes } = node {
+        if let &Node::Nonterm{ ref nodes, .. } = node {
             gen_exp(&nodes[1], ctx);
-            let pos = ctx.gen_bc(Instr::JUMP_IF_FALSE(PLACEHOLDER));
+            let pos = ctx.gen_bc(Instr::JumpIfFalse(PLACEHOLDER));
             gen_block(&nodes[2], ctx);
             ctx.patch(pos);
         }
@@ -441,30 +463,30 @@ fn gen_bytecode(parse_tree: &Node<u16>, grm: &YaccGrammar, input: &str) -> Bytec
 
     //for_statement : "FOR" "LPAREN" statement "SEMI" expression "SEMI" statement "RPAREN" block;
     fn gen_for(node: &Node<u16>, ctx: &mut CompilerContext) {
-        if let &Node::Nonterm{ nonterm_idx, ref nodes } = node {
+        if let &Node::Nonterm{ ref nodes, .. } = node {
             gen_stmt(&nodes[2], ctx);
             // Loop begins
             let loop_entry = ctx.bytecode.len();
             gen_exp(&nodes[4], ctx); // conditional
-            let exit_call = ctx.gen_bc(Instr::JUMP_IF_FALSE(PLACEHOLDER));
+            let exit_call = ctx.gen_bc(Instr::JumpIfFalse(PLACEHOLDER));
             gen_block(&nodes[8], ctx); // loop body
             gen_stmt(&nodes[6], ctx); // step
-            ctx.gen_bc(Instr::JUMP(loop_entry));
+            ctx.gen_bc(Instr::Jump(loop_entry));
             ctx.patch(exit_call);
         }
     }
 
     // func_def : "DEF" "IDENTIFIER" "LPAREN" parameter_list_opt "RPAREN" block ;
     fn gen_func_def(node: &Node<u16>, ctx: &mut CompilerContext) {
-        if let &Node::Nonterm{ nonterm_idx, ref nodes } = node {
+        if let &Node::Nonterm{ ref nodes, .. } = node {
             let (cls_name, fn_name) = ctx.register_function(&nodes[1]);
             gen_params(&nodes[3], ctx);
             gen_block(&nodes[5], ctx);
             if (cls_name, fn_name) == ("global".to_string(), "main".to_string()) {
-                ctx.gen_bc(Instr::EXIT);
+                ctx.gen_bc(Instr::Exit);
             }
             else {
-                ctx.gen_bc(Instr::RET);
+                ctx.gen_bc(Instr::Ret);
             }
         }
     }
@@ -474,12 +496,12 @@ fn gen_bytecode(parse_tree: &Node<u16>, grm: &YaccGrammar, input: &str) -> Bytec
     //                ;
     fn gen_params(node: &Node<u16>, ctx: &mut CompilerContext) {
         match *node {
-            Node::Nonterm { nonterm_idx, ref nodes } => {
+            Node::Nonterm { ref nodes, ..} => {
                 for child in nodes.iter() {
                     gen_params(child, ctx)
                 }
             }
-            Node::Term{ lexeme } => {
+            Node::Term{..} => {
                 if ctx.get_name(node) == "IDENTIFIER" {
                     ctx.register_parameter(node);
                 }
@@ -489,7 +511,7 @@ fn gen_bytecode(parse_tree: &Node<u16>, grm: &YaccGrammar, input: &str) -> Bytec
 
     let mut ctx = CompilerContext::new(grm, input);
     match *parse_tree {
-        Node::Nonterm { nonterm_idx, ref nodes } => {
+        Node::Nonterm { ref nodes, .. } => {
             for cls in nodes.iter() {
                 gen_class(cls, &mut ctx);
             }

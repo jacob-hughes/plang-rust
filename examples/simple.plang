@@ -1,5 +1,9 @@
-class Bar() {
-    def x(hello, bye) {
-        10 + 3
+class global {
+    def main() {
+        main.hello(666)
+    }
+
+    def hello(x) {
+        return x
     }
 }

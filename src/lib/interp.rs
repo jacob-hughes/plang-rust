@@ -4,6 +4,7 @@ use std::collections::HashMap;
 
 static GLOBAL_NSPACE: &'static str = "global";
 static MAIN_FN: &'static str = "main";
+const EXCEPTION_PTR: usize = 0;
 
 #[derive(Debug, Clone)]
 pub enum NativeType {
@@ -12,6 +13,7 @@ pub enum NativeType {
     Bool(bool),
     Str(String),
     ObjectRef(usize),
+    NoneType,
 }
 
 impl NativeType {
@@ -21,21 +23,20 @@ impl NativeType {
             NativeType::Double(ref x) => x.to_string(),
             NativeType::Bool(ref x) => x.to_string(),
             NativeType::Str(ref x) => x.to_string(),
-            NativeType::ObjectRef(ref x) => x.to_string(),
+            NativeType::ObjectRef(ref x) => format!("&{}",x.to_string()),
+            NativeType::NoneType => "None".to_string()
         }
     }
 }
 
 #[derive(Clone)]
 struct Object {
-    class_name : String,
     fields: HashMap<String, NativeType>,
 }
 
 impl Object {
-    fn new(class_name: String) -> Object {
+    fn new() -> Object {
         Object {
-            class_name: class_name,
             fields: HashMap::new()
         }
     }
@@ -62,74 +63,126 @@ impl VM {
         self.enter_main();
         let mut result = None;
         loop {
-            let instr = self.bytecode.bytecode[self.pc].clone();
-            match instr {
-                Instr::PUSH_INT(ref x) => {
+            let bytecode_size = self.bytecode.bytecode.len();
+            if self.pc >= bytecode_size {
+                let frame = self.frames.last_mut();
+                match frame {
+                    Some(x) => {
+                        match x.peek() {
+                            Some(y) => result = Some(y.clone()),
+                            None => (),
+                        }
+                    }
+                    None => (),
+                }
+                break
+            }
+            match *&self.bytecode.bytecode[self.pc] {
+                Instr::PushInt(ref x) => {
                     let frame = self.frames.last_mut().unwrap();
                     frame.push(NativeType::Int(x.clone()));
                     self.pc += 1
                 }
-                Instr::PUSH_STR(ref x) => {
+                Instr::PushStr(ref x) => {
                     let frame = self.frames.last_mut().unwrap();
                     frame.push(NativeType::Str(x.clone()));
                     self.pc += 1
                 }
-                Instr::POP => {
+                Instr::Pop => {
                     let frame = self.frames.last_mut().unwrap();
                     frame.pop();
                     self.pc +=1
                 }
-                Instr::ADD => {
+                Instr::Dup => {
+                    let frame = self.frames.last_mut().unwrap();
+                    frame.dup();
+                    self.pc += 1
+                }
+                Instr::Add => {
                     let frame = self.frames.last_mut().unwrap();
                     frame.add();
                     self.pc +=1
                 }
-                Instr::SUB => {
+                Instr::Sub => {
                     let frame = self.frames.last_mut().unwrap();
                     frame.sub();
                     self.pc +=1
                 }
-                Instr::LTEQ => {
+                Instr::Lteq => {
                     let frame = self.frames.last_mut().unwrap();
                     frame.lteq();
                     self.pc +=1
                 }
-                Instr::GTEQ =>{
+                Instr::Gteq =>{
                     let frame = self.frames.last_mut().unwrap();
                     frame.gteq();
                     self.pc +=1
                 }
-                Instr::LT =>{
+                Instr::Lt =>{
                     let frame = self.frames.last_mut().unwrap();
                     frame.lt();
                     self.pc +=1
                 }
-                Instr::GT =>{
+                Instr::Gt =>{
                     let frame = self.frames.last_mut().unwrap();
                     frame.gt();
                     self.pc +=1
                 }
-                Instr::EQEQ =>{
+                Instr::Eqeq =>{
                     let frame = self.frames.last_mut().unwrap();
                     frame.eq();
                     self.pc +=1
                 }
-                Instr::LOAD_VAR(index) => {
+                Instr::LoadVar(index) => {
                     let frame = self.frames.last_mut().unwrap();
                     frame.load_local(index);
                     self.pc += 1
                 }
-                Instr::STORE_VAR(name) => {
+                Instr::StoreVar(name) => {
                     let frame = self.frames.last_mut().unwrap();
                     frame.store_local(name);
                     self.pc += 1
                 }
-                Instr::LOAD_GLOBAL(ref name) => panic!("NotYetImplemented"),
-                Instr::STORE_GLOBAL(ref name) => panic!("NotYetImplemented"),
-                Instr::NEW_OBJECT(ref class_name) => panic!("NotYetImplemented"),
-                Instr::LOAD_FIELD(ref field_name) => panic!("NotYetImplemented"),
-                Instr::STORE_FIELD(ref field_name) => panic!("NotYetImplemented"),
-                Instr::JUMP_IF_TRUE(pos) => {
+                Instr::Raise => {
+                    let frame = self.frames.last_mut().unwrap();
+                    frame.raise("Exception");
+                }
+                Instr::LoadGlobal(ref _name) => panic!("NotYetImplemented"),
+                Instr::StoreGlobal(ref _name) => panic!("NotYetImplemented"),
+                Instr::NewObject => {
+                    let obj = Object::new();
+                    self.heap.push(obj);
+                    let obj_ref = self.heap.len() - 1;
+                    let frame = self.frames.last_mut().unwrap();
+                    frame.push(NativeType::ObjectRef(obj_ref));
+                    self.pc += 1
+                },
+                Instr::LoadField(ref field_name) => {
+                    let frame = self.frames.last_mut().unwrap();
+                    let obj_ref = frame.pop();
+                    let obj = match obj_ref {
+                        NativeType::ObjectRef(x) => self.heap.get(x).unwrap(),
+                        _ => panic!("Not a valid object")
+                    };
+                    let field = obj.fields.get(field_name)
+                        .expect("Field not found");
+                    frame.push(field.clone());
+                    self.pc += 1
+                }
+                Instr::StoreField(ref field_name) => {
+                    let frame = self.frames.last_mut().unwrap();
+                    let obj_ref = frame.pop();
+                    let value = frame.pop();
+                    match obj_ref {
+                        NativeType::ObjectRef(x) => {
+                            let obj = self.heap.get_mut(x).unwrap();
+                            obj.fields.insert(field_name.to_string(), value);
+                        }
+                        _ => panic!("Not a valid object")
+                    };
+                    self.pc += 1
+                },
+                Instr::JumpIfTrue(pos) => {
                     let frame = self.frames.last_mut().unwrap();
                     if let NativeType::Bool(true) = frame.pop() {
                         self.pc = pos
@@ -138,7 +191,7 @@ impl VM {
                         self.pc += 1
                     }
                 },
-                Instr::JUMP_IF_FALSE(pos) => {
+                Instr::JumpIfFalse(pos) => {
                     let frame = self.frames.last_mut().unwrap();
                     if let NativeType::Bool(false) = frame.pop() {
                         self.pc = pos
@@ -147,32 +200,42 @@ impl VM {
                         self.pc += 1
                     }
                 },
-                Instr::JUMP(pos) => self.pc = pos,
-                Instr::CALL(ref class_name, ref fn_name) => {
+                Instr::Jump(pos) => self.pc = pos,
+                Instr::Call(ref class_name, ref fn_name) => {
                     let ref key = (class_name.to_string(), fn_name.to_string());
                     let fn_metadata = self.bytecode.symbols.get(&key.clone())
                         .expect("Function not found");
-                    let mut new_frame = Frame::new(self.pc + 1);
-                    {
+                    let mut locals = {
                         let frame = self.frames.last_mut().unwrap();
-                        for i in 0..fn_metadata.params_len() {
-                            new_frame.locals.push(frame.pop())
+                        let mut locals = Vec::new();
+                        for _ in 0..fn_metadata.params_len() {
+                            locals.push(frame.pop())
                         }
-                    }
+                        locals
+                    };
+                    locals.reverse(); // TODO: This can be more efficient if we rework
+                                    // this to add args in reverse order in place
+                    let new_frame = Frame::new(fn_name.to_string(), locals, self.pc + 1);
                     self.frames.push(new_frame);
                     self.pc = self.bytecode.labels.get(key).unwrap().clone();
                 },
-                Instr::RET => {
+                Instr::Ret => {
                     let (return_value, return_address) =  {
                         let frame = self.frames.last_mut().unwrap();
-                        (frame.pop(), frame.return_address)
+                        let ret_val = if frame.stack.len() > 0 {
+                            frame.pop()
+                        }
+                        else {
+                            NativeType::NoneType
+                        };
+                        (ret_val, frame.return_address)
                     };
                     self.frames.pop();
                     let frame = self.frames.last_mut().unwrap();
                     frame.push(return_value);
                     self.pc = return_address;
                 },
-                Instr::EXIT => {
+                Instr::Exit => {
                     let frame = self.frames.last_mut().unwrap();
                     result = match frame.peek() {
                         Some(x) => Some(x.clone()),
@@ -182,6 +245,7 @@ impl VM {
                 }
                 _ => panic!("InstrNotImplemented"),
             };
+            self.unwind_stack_on_raise();
         }
         result
     }
@@ -190,37 +254,74 @@ impl VM {
         self.pc = self.bytecode.labels.get(
             &(GLOBAL_NSPACE.to_string(), MAIN_FN.to_string()))
             .expect("Main method not found").clone();
-        self.frames.push(Frame::new(self.bytecode.bytecode.len()))
+        self.frames.push(Frame::new("main".to_string(), Vec::new(), self.bytecode.bytecode.len()))
+    }
+
+    fn unwind_stack_on_raise(&mut self) {
+        if self.frames.last().unwrap().raise {
+            let mut backtrace: Vec<NativeType> = Vec::new();
+            let mut try_index: usize = self.frames.len() - 1;
+            for (i, f) in self.frames.iter().rev().enumerate() {
+                if f.in_try {
+                    try_index = i;
+                    break
+                }
+                else {
+                    backtrace.push(NativeType::Str(f.name.to_string()));
+                }
+            }
+            let try_index = self.frames.len() - try_index - 1;
+            self.frames.drain(try_index..);
+            match self.frames.last() {
+                Some(ref x) => self.pc = x.return_address, //FIXME: WRONG
+                None => {
+                    eprintln!("Exception raised. Backtrace:");
+                    eprintln!("{:?}", backtrace);
+                    self.pc = usize::max_value()
+                }
+            }
+        }
     }
 }
 
 struct Frame {
     stack:  Vec<NativeType>,
     locals: Vec<NativeType>,
-    return_address: usize
+    return_address: usize,
+    raise: bool,
+    in_try: bool,
+    name: String
 }
 
 impl Frame {
-    pub fn new(return_address: usize) -> Frame {
+    fn new(name: String, locals: Vec<NativeType>, return_address: usize) -> Frame {
         Frame {
             stack: Vec::new(),
-            locals: Vec::new(),
+            locals: locals,
             return_address: return_address,
+            raise: false,
+            in_try: false,
+            name: name
         }
     }
 
-    pub fn push(&mut self, obj: NativeType) {
+    fn push(&mut self, obj: NativeType) {
         self.stack.push(obj);
     }
 
-    pub fn pop(&mut self) -> NativeType {
+    fn pop(&mut self) -> NativeType {
         match self.stack.pop() {
             Some(x) => x,
             None => panic!("Popped from empty stack!"),
         }
     }
 
-    pub fn peek(&mut self) -> Option<&NativeType> {
+    fn dup(&mut self) {
+        let tos = self.peek().unwrap().clone();
+        self.push(tos)
+    }
+
+    fn peek(&mut self) -> Option<&NativeType> {
          self.stack.last()
     }
 
@@ -241,7 +342,13 @@ impl Frame {
         }
     }
 
-    pub fn add(&mut self) {
+    fn raise(&mut self, msg: &str) {
+        self.push(NativeType::ObjectRef(EXCEPTION_PTR));
+        self.push(NativeType::Str(msg.to_string()));
+        self.raise = true
+    }
+
+    fn add(&mut self) {
         let rhs = self.pop();
         let lhs = self.pop();
         match (lhs, rhs) {
@@ -249,11 +356,11 @@ impl Frame {
             (NativeType::Int(x), NativeType::Double(y))     => self.push(NativeType::Double(x as f32 + y)),
             (NativeType::Double(x), NativeType::Int(y))     => self.push(NativeType::Double(x + y as f32)),
             (NativeType::Double(x), NativeType::Double(y))  => self.push(NativeType::Double(x+y)),
-            _ => panic!("TypeError"),
+            _ => self.raise("TypeError"),
         }
     }
 
-    pub fn sub(&mut self) {
+    fn sub(&mut self) {
         let rhs = self.pop();
         let lhs = self.pop();
         match (lhs, rhs) {
@@ -261,11 +368,11 @@ impl Frame {
             (NativeType::Int(x), NativeType::Double(y))     => self.push(NativeType::Double(x as f32 - y)),
             (NativeType::Double(x), NativeType::Int(y))     => self.push(NativeType::Double(x - y as f32)),
             (NativeType::Double(x), NativeType::Double(y))  => self.push(NativeType::Double(x-y)),
-            _ => panic!("TypeError"),
+            _ => self.raise("TypeError"),
         }
     }
 
-    pub fn lteq(&mut self) {
+    fn lteq(&mut self) {
         let rhs = self.pop();
         let lhs = self.pop();
         match (lhs, rhs) {
@@ -273,11 +380,11 @@ impl Frame {
             (NativeType::Int(x), NativeType::Double(y))     => self.push(NativeType::Bool(x as f32 <= y)),
             (NativeType::Double(x), NativeType::Int(y))     => self.push(NativeType::Bool(x <= y as f32)),
             (NativeType::Double(x), NativeType::Double(y))  => self.push(NativeType::Bool(x<=y)),
-            _ => panic!("TypeError"),
+            _ => self.raise("TypeError"),
         }
     }
 
-    pub fn lt(&mut self) {
+    fn lt(&mut self) {
         let rhs = self.pop();
         let lhs = self.pop();
         match (lhs, rhs) {
@@ -285,11 +392,11 @@ impl Frame {
             (NativeType::Int(x), NativeType::Double(y))     => self.push(NativeType::Bool((x as f32) < y)),
             (NativeType::Double(x), NativeType::Int(y))     => self.push(NativeType::Bool(x < (y as f32))),
             (NativeType::Double(x), NativeType::Double(y))  => self.push(NativeType::Bool(x<y)),
-            _ => panic!("TypeError"),
+            _ => self.raise("TypeError"),
         }
     }
 
-    pub fn gt(&mut self) {
+    fn gt(&mut self) {
         let rhs = self.pop();
         let lhs = self.pop();
         match (lhs, rhs) {
@@ -297,11 +404,11 @@ impl Frame {
             (NativeType::Int(x), NativeType::Double(y))     => self.push(NativeType::Bool((x as f32) > y)),
             (NativeType::Double(x), NativeType::Int(y))     => self.push(NativeType::Bool(x > (y as f32))),
             (NativeType::Double(x), NativeType::Double(y))  => self.push(NativeType::Bool(x>y)),
-            _ => panic!("TypeError"),
+            _ => self.raise("TypeError"),
         }
     }
 
-    pub fn gteq(&mut self) {
+    fn gteq(&mut self) {
         let rhs = self.pop();
         let lhs = self.pop();
         match (lhs, rhs) {
@@ -309,7 +416,7 @@ impl Frame {
             (NativeType::Int(x), NativeType::Double(y))     => self.push(NativeType::Bool(x as f32 >= y)),
             (NativeType::Double(x), NativeType::Int(y))     => self.push(NativeType::Bool(x >= y as f32)),
             (NativeType::Double(x), NativeType::Double(y))  => self.push(NativeType::Bool(x>=y)),
-            _ => panic!("TypeError"),
+            _ => self.raise("TypeError"),
         }
     }
 
@@ -321,7 +428,7 @@ impl Frame {
             (NativeType::Int(x), NativeType::Double(y))     => self.push(NativeType::Bool(x as f32 == y)),
             (NativeType::Double(x), NativeType::Int(y))     => self.push(NativeType::Bool(x == (y as f32))),
             (NativeType::Double(x), NativeType::Double(y))  => self.push(NativeType::Bool(x==y)),
-            _ => panic!("TypeError"),
+            _ => self.raise("TypeError"),
         }
     }
 }

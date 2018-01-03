@@ -28,6 +28,9 @@ let     LET
 for     FOR
 new     NEW
 this    THIS
+try     TRY
+except  EXCEPT
+raise   RAISE
 
 [0-9]+                  INT_LITERAL
 (true|false)            BOOL_LITERAL

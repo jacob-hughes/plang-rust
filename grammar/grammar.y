@@ -26,6 +26,8 @@ statement : expression
           | let_statement
           | func_def
           | for_statement
+          | try_except
+          | raise
           ;
 
 if_statement : "IF" expression block;
@@ -35,6 +37,10 @@ let_statement : "LET" "IDENTIFIER" "EQ" expression;
 for_statement : "FOR" "LPAREN" statement "SEMI" expression "SEMI" statement "RPAREN" block;
 
 func_def    : "DEF" "IDENTIFIER" "LPAREN" parameter_list_opt "RPAREN" block ;
+
+try_except : "TRY" block "EXCEPT" block;
+
+raise : "RAISE";
 
 parameter_list_opt :
                    | parameter_list
@@ -49,6 +55,7 @@ expression : variable
            | method_invocation
            | method_invocation_same_class
            | field_access
+           | field_set
            | class_instance_creation
            | literal
            ;
@@ -82,7 +89,7 @@ field_access : "IDENTIFIER" "DOT" "IDENTIFIER";
 
 field_set : "IDENTIFIER" "DOT" "IDENTIFIER" "EQ" expression;
 
-class_instance_creation : "NEW" "IDENTIFIER" "LPAREN" parameter_list_opt "RPAREN";
+class_instance_creation : "NEW" "IDENTIFIER" "LPAREN" arg_list_opt "RPAREN";
 
 literal : "INT_LITERAL"
         | "BOOL_LITERAL"
